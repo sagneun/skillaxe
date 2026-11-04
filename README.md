@@ -136,6 +136,8 @@ LLM_CONCURRENCY=8
 
 SkillAxe 진단 모델은 `.env`의 `SKILLAXE_LLM_MODEL`로 별도 지정한다. 초기값은 `openai/gpt-4.1-nano`이며, 이 값만 변경하면 SQL 에이전트와 Improver에 영향을 주지 않는다. 진단용 접속 정보가 다르면 `SKILLAXE_LLM_BASE_URL`, `SKILLAXE_LLM_API_KEY`, `SKILLAXE_LLM_PROVIDER`도 지정할 수 있다. 미설정 값은 기본 `LLM_*`를 사용하며 `IMPROVER_LLM_*`를 상속하지 않는다. 변경은 다음 실행부터 적용되며 실제 진단 모델은 실행 기록의 `judge.model`에 저장된다.
 
+진단 모델을 바꿀 때는 provider 제한도 확인한다. 기본 `LLM_PROVIDER=Azure`인 환경에서 `openai/gpt-oss-120b`를 사용할 경우, 진단 전용 `SKILLAXE_LLM_PROVIDER=deepinfra/bf16`를 지정해 Azure 제한의 상속을 피했다. SQL 에이전트·Improver의 기본 provider 설정은 유지한다. 지원 provider와 구조화 응답 지원 여부는 서비스 상태에 따라 달라질 수 있다.
+
 한국어 실험의 Trigger는 spaCy `ko_core_news_sm` 3.8.0, Trigger·Coverage는 다국어 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`를 공유한다. 한국어 명사구는 의존 구문의 명사와 복합명사 수식어로 추출하며, 부정 표현의 지배 범위를 사용한다. 영문 파서는 기존 기록 재현용으로 유지한다. 임베딩 revision은 설정에 고정하며 최초 사용 시 모델 파일을 다운로드한다. 텍스트와 모델 설정에 따른 임베딩 캐시는 별도로 유지한다.
 
 ### 활성 스킬 준비 — 최초 한 번
@@ -269,6 +271,24 @@ screen은 16/20 → 17/20, 전체 평가에서는 3문제 개선·2문제 악화
 **진단의 의미적 문제는 해결되지 않았다.** Compliance는 5문제 모두 빈 규칙 배열을 반환해 N/A였다. 실제 스킬에는 실행 절차가 있으므로 이를 지침이 없다는 증거로 해석하면 안 된다. Quality는 결제 수단 문제에서 요청하지 않은 집계 열을 더 보여준다는 이유로 No-skill을 우세하게 판단하는 문제를 반복했다. 후보는 적용·회피 조건을 추가하고 마지막 소개 문단을 제거했지만 SQL 작성 절차와 예제는 유지했으며, 수정 이유도 기존 규칙 유지라는 일반적인 설명을 반복했다. 따라서 +1만으로 근거 있는 스킬 개선이나 프롬프트 수정의 효과를 입증하지 못한다. manifest의 `complete`는 처리 완료 상태이며 모든 진단이 유효하다는 뜻이 아니다.
 
 평가셋 100개는 SkillAxe의 요구가 아니라 기존 프로젝트의 고정 validation 구성이다. `scripts/operator/split_spec.yaml`은 validation 100·test 200·few-shot 300과 고정 seed를 지정한다. SQL 특징과 초기 모델의 오류 유형을 반영해 구성하며, 현재 설정의 진단 5문제·screen 20문제·전체 validation 100문제는 서로 다른 단계다.
+
+### 진단 모델 변경 후 재실행 (round 6·7)
+
+SQL 에이전트와 Improver는 `openai/gpt-4.1-nano`로 유지하고 진단 모델만 `openai/gpt-oss-120b`로 변경했다. round 6은 기본 Azure provider 제한을 상속해 진단 API가 404로 실패했으며 후보 생성 전에 중단됐다. 기록은 `logs/skillaxe/round-6-19c3e916/`에 보존했다(No-skill 73/100, 초기 L0 69/100).
+
+진단 전용 `SKILLAXE_LLM_PROVIDER=deepinfra/bf16`를 설정하고 규칙 추출 한 건을 검증한 뒤 round 7을 실행했다. 기록은 `logs/skillaxe/round-7-b5e32ad1/`이다.
+
+| 조건 | validation 결과 |
+|---|---:|
+| No-skill | 72/100 |
+| 한국어 초기 스킬 L0 | 70/100 |
+| 진화 후보 | 미실행: 후보의 진단·규칙 참조 오류 |
+
+네 진단축은 모두 available 상태로 완료됐다. Compliance는 문제마다 9개 규칙을 추출했고 적용 대상 규칙을 SQL 근거로 판단했다. 준수 점수는 순서대로 1.0, 1.0, 1.0, 약 0.927, 1.0이다. 결제 방법 문제의 Quality는 요청하지 않은 건수 열을 추가한 No-skill보다 요청한 코드만 반환한 스킬 SQL을 우세하게 평가해 +0.25를 기록했다. 나머지 4문제의 Quality는 0이다. 집계 조건을 HAVING으로 처리하는 SQL과 스킬의 WHERE 지침 사이 차이도 진단했다. 이는 관측된 진단 개선이며 모델 전반의 정확성이 입증된 것은 아니다.
+
+그러나 nano Improver는 `changes`에서 Quality 진단 ID에 Compliance 규칙 ID들을 연결했다. 해당 진단에는 그 규칙들이 없으므로 `unknown rule reference` 검증 오류가 발생했고 자동 교정 1회도 같은 오류로 실패했다. SQL 작성 절차도 그대로인 수정안이었으며, 검증된 후보가 없어 screen/full 후보 평가는 실행되지 않았다. 활성 스킬은 L0를 유지한다. 진단은 완료됐지만 스킬 진화·성능 향상은 확인하지 못했다.
+
+round 7은 약 956초(16분)가 걸렸다. 진단 모델의 순차 호출 시간이 대부분을 차지했다. 기준 태그가 없어 `ruler: skipped`이며 공식 test는 실행하지 않았다. 진단 모델·provider 변경 외에 프롬프트, 토큰 한도, 채점·채택 규칙은 실행 중 변경하지 않았다.
 
 ## 8. 대시보드
 
