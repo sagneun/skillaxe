@@ -22,3 +22,5 @@ Return ONLY one JSON object with exactly these fields:
  "uncertainty":false,"uncertainty_reason":""}
 uncertainty must be a JSON boolean. If true, uncertainty_reason must explain the
 limitation. If false, use an empty string for uncertainty_reason.
+
+Write all natural-language explanations, rules, evidence and strategy strings in Korean. Preserve the required JSON keys, enum values, booleans, numbers, SQL identifiers and exact source_quote substrings.

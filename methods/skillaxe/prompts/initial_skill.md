@@ -9,7 +9,7 @@ skill focused on translating natural-language requests into SQLite queries.
 Make it useful for related unseen questions, rather than a list of answers to
 these particular examples. Include procedural instructions, short illustrative
 SQL examples and usage patterns. Mention setup only where it is relevant to
-an existing SQLite environment. Use English.
+an existing SQLite environment. Write the description, headings, explanations and usage conditions in Korean. Keep SQL keywords, table/column identifiers and literal database values unchanged. Keep the complete skill concise (about 1,500 Korean characters excluding SQL).
 
 The supplied examples are context for authoring. Do not solve them, output their
 final SQL, run queries, or claim that any approach has passed evaluation. No

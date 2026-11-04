@@ -19,11 +19,11 @@ hook_changed: diagnose,build_prompt,propose,on_round_start - SkillAxe four-axis 
 skillaxe:
   task_ids: [train_5749, train_4538, train_3880, train_6232, train_5387]
   output_dir: logs/skillaxe
-  archive: logs/skillaxe/archive.json
-  embedding_model: sentence-transformers/all-MiniLM-L6-v2
-  embedding_revision: 1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+  archive: logs/skillaxe/korean-archive.json
+  embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  embedding_revision: e8f8c211226b894fcb81acc59f3b34ba3efd5f42
   embedding_cache: logs/skillaxe/embedding-cache
-  parser_model: en_core_web_sm
+  parser_model: ko_core_news_sm
   parser_version: 3.8.0
   alpha: 0.5
   skill_type: SQLite Text-to-SQL

@@ -14,7 +14,7 @@ def trigger_scores(positive, negative):
 
 
 class TriggerParser:
-    """영문 noun phrase 추출. 부정/avoid/exclude 지배 구문을 기록한다.
+    """영문 noun chunk 및 한국어 의존 구문의 명사구 추출. 부정/avoid/exclude 지배 구문을 기록한다.
 
     description과 명시적 applies_when/avoid_when을 사용한다. 실행 지침 본문을
     임의로 적용 조건으로 해석하지 않는다. 추출 규칙은 논문 공개 설정이 아닌 구현 선택.
@@ -24,9 +24,22 @@ class TriggerParser:
         self.nlp = spacy.load(model)
         if self.nlp.meta.get('version') != version or not self.nlp.has_pipe('parser'):
             raise ValueError('parser version mismatch or dependency parser missing')
-        if self.nlp.lang != 'en':
-            raise ValueError('English dependency parser required')
-        self.settings = dict(model=model, version=version, spacy_version=spacy.__version__, rule='noun-chunk-negation-v1')
+        if self.nlp.lang not in ('en','ko'):
+            raise ValueError('English or Korean dependency parser required')
+        self.settings = dict(model=model, version=version, spacy_version=spacy.__version__, rule='ko-dependency-nominal-negation-v1' if self.nlp.lang=='ko' else 'noun-chunk-negation-v1')
+
+    def _korean_chunks(self, doc):
+        # spaCy Korean has no noun_chunks iterator. Use nominal dependency heads
+        # and their contiguous compound modifiers; offsets always reference source.
+        for token in doc:
+            if token.pos_ not in ('NOUN','PROPN') or token.lemma_.split('+')[0] in ('스킬','것','수','때','경우'):
+                continue
+            if token.dep_=='compound' and token.head.pos_ in ('NOUN','PROPN'):
+                continue
+            start=token.i
+            while start>token.sent.start and doc[start-1].pos_ in ('NOUN','PROPN') and doc[start-1].dep_=='compound' and doc[start-1].head.i<=token.i:
+                start-=1
+            yield doc[start:token.i+1]
 
     def extract(self, skill):
         sources = [('description', skill.description, False)]
@@ -35,7 +48,8 @@ class TriggerParser:
         phrases = []
         for field, text, excluded in sources:
             doc = self.nlp(text)
-            for chunk in doc.noun_chunks:
+            chunks=self._korean_chunks(doc) if self.nlp.lang=='ko' else doc.noun_chunks
+            for chunk in chunks:
                 if chunk.root.pos_ == "PRON" or chunk.root.lemma_.lower() == "skill":
                     continue
                 governing = [chunk.root, *chunk.root.ancestors]
@@ -43,6 +57,12 @@ class TriggerParser:
                     node.lemma_.lower() in ('avoid','exclude') or node.lower_ == 'without' or node.dep_ == 'neg' or
                     any(child.dep_ == 'neg' or child.lower_ in ('no','never') for child in node.children)
                     for node in governing)
+                if self.nlp.lang=='ko':
+                    negation={'않','못','안','아니','없','제외','금지','피하'}
+                    negative=excluded or any(
+                        bool(set(node.lemma_.split('+')) & negation) or any(
+                            child.dep_ in ('aux','advmod','neg') and bool(set(child.lemma_.split('+')) & negation)
+                            for child in node.children) for node in governing)
                 sentence = chunk.sent
                 phrases.append(dict(phrase_id=f'p{len(phrases)+1}', text=chunk.text, context=sentence.text,
                                     polarity='negative' if negative else 'positive', field=field,

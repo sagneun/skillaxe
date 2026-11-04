@@ -75,7 +75,7 @@ def diagnose_round(ctx):
             task=TaskInput(task_id,raw['question'],raw['db_id'],schema_text(ctx.config['tables'],raw['db_id']))
             write_json(root/'inputs'/f'{index}.json',asdict(task))
             database=Path(ctx.config['db_dir'])/task.db_id/f'{task.db_id}.sqlite'
-            policy=ExecutionPolicy(timeout_seconds=ctx.config.get('sql_timeout_sec',5))
+            policy=ExecutionPolicy(timeout_seconds=float(ctx.config.get('sql_timeout_sec',5)))
             traces=[run_with_skill(task,s,database,agent,policy) for s in (None,skill)]
             for trace in traces:
                 write_json(root/'traces'/f'{trace.trace_id}.json',asdict(trace))

@@ -15,7 +15,8 @@ package = false
 
 [project.optional-dependencies]
 skillaxe = [
-    "spacy>=3.8,<3.9",
+    "spacy[ko]>=3.8,<3.9",
     "sentence-transformers>=3,<6",
+    "ko-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/ko_core_news_sm-3.8.0/ko_core_news_sm-3.8.0-py3-none-any.whl",
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
 ]

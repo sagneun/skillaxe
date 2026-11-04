@@ -58,3 +58,29 @@ class ParserRegressionTests(unittest.TestCase):
         positive=[p['text'] for p in phrases if p['polarity']=='positive']
         self.assertTrue(any('SQLite' in p or 'queries' in p for p in positive))
         self.assertNotIn('this skill',[p['text'] for p in phrases])
+
+class KoreanParserTests(unittest.TestCase):
+    def test_korean_phrases_and_explicit_exclusions_preserve_source_offsets(self):
+        try:
+            import ko_core_news_sm
+        except ImportError:
+            self.skipTest('Korean parser not installed')
+        from methods.skillaxe.diagnostics.trigger import TriggerParser
+        parser=TriggerParser('ko_core_news_sm','3.8.0')
+        skill=SkillVersion('ko','L0','SQLite 데이터 조회와 결제 집계를 수행합니다.','절차',avoid_when=('데이터를 수정하는 요청에는 사용하지 않습니다.',))
+        phrases=parser.extract(skill)
+        self.assertTrue(any(p['polarity']=='positive' for p in phrases))
+        self.assertTrue(any(p['polarity']=='negative' for p in phrases))
+        for p in phrases:
+            source=skill.description if p['field']=='description' else skill.avoid_when[0]
+            self.assertEqual(source[p['start']:p['end']],p['text'])
+    def test_korean_grammatical_negation(self):
+        try:
+            import ko_core_news_sm
+        except ImportError:
+            self.skipTest('Korean parser not installed')
+        from methods.skillaxe.diagnostics.trigger import TriggerParser
+        skill=SkillVersion('ko','L0','결제 집계를 제외합니다.','절차')
+        phrases=TriggerParser('ko_core_news_sm','3.8.0').extract(skill)
+        self.assertTrue(phrases)
+        self.assertTrue(all(p['polarity']=='negative' for p in phrases))

@@ -1,0 +1,35 @@
+{
+  "skill_scope": "Reusable SQLite Text-to-SQL procedures",
+  "development_tasks": [
+    {
+      "task_id": "train_5749",
+      "question": "How many female students live in Smith Hall?",
+      "db_id": "dorm_1",
+      "schema": "table Student: StuID number, LName text, Fname text, Age number, Sex text, Major number, Advisor number, city_code text\ntable Dorm: dormid number, dorm_name text, student_capacity number, gender text\ntable Dorm_amenity: amenid number, amenity_name text\ntable Has_amenity: dormid number, amenid number\ntable Lives_in: stuid number, dormid number, room_number number\nforeign keys: Has_amenity.amenid -> Dorm_amenity.amenid; Has_amenity.dormid -> Dorm.dormid; Lives_in.dormid -> Dorm.dormid; Lives_in.stuid -> Student.StuID"
+    },
+    {
+      "task_id": "train_4538",
+      "question": "What are the names and urls of images, sorted alphabetically?",
+      "db_id": "document_management",
+      "schema": "table Roles: role_code text, role_description text\ntable Users: user_id number, role_code text, user_name text, user_login text, password text\ntable Document_Structures: document_structure_code text, parent_document_structure_code text, document_structure_description text\ntable Functional_Areas: functional_area_code text, parent_functional_area_code text, functional_area_description text\ntable Images: image_id number, image_alt_text text, image_name text, image_url text\ntable Documents: document_code text, document_structure_code text, document_type_code text, access_count number, document_name text\ntable Document_Functional_Areas: document_code text, functional_area_code text\ntable Document_Sections: section_id number, document_code text, section_sequence number, section_code text, section_title text\ntable Document_Sections_Images: section_id number, image_id number\nforeign keys: Users.role_code -> Roles.role_code; Documents.document_structure_code -> Document_Structures.document_structure_code; Document_Functional_Areas.functional_area_code -> Functional_Areas.functional_area_code; Document_Functional_Areas.document_code -> Documents.document_code; Document_Sections.document_code -> Documents.document_code; Document_Sections_Images.image_id -> Images.image_id; Document_Sections_Images.section_id -> Document_Sections.section_id"
+    },
+    {
+      "task_id": "train_3880",
+      "question": "With which kind of payment method were the least number of payments processed?",
+      "db_id": "insurance_policies",
+      "schema": "table Customers: Customer_ID number, Customer_Details text\ntable Customer_Policies: Policy_ID number, Customer_ID number, Policy_Type_Code text, Start_Date time, End_Date time\ntable Claims: Claim_ID number, Policy_ID number, Date_Claim_Made time, Date_Claim_Settled time, Amount_Claimed number, Amount_Settled number\ntable Settlements: Settlement_ID number, Claim_ID number, Date_Claim_Made time, Date_Claim_Settled time, Amount_Claimed number, Amount_Settled number, Customer_Policy_ID number\ntable Payments: Payment_ID number, Settlement_ID number, Payment_Method_Code text, Date_Payment_Made time, Amount_Payment number\nforeign keys: Customer_Policies.Customer_ID -> Customers.Customer_ID; Claims.Policy_ID -> Customer_Policies.Policy_ID; Settlements.Claim_ID -> Claims.Claim_ID; Payments.Settlement_ID -> Settlements.Settlement_ID"
+    },
+    {
+      "task_id": "train_6232",
+      "question": "Which classes have more than two captains?",
+      "db_id": "ship_1",
+      "schema": "table captain: Captain_ID number, Name text, Ship_ID number, age text, Class text, Rank text\ntable Ship: Ship_ID number, Name text, Type text, Built_Year number, Class text, Flag text\nforeign keys: captain.Ship_ID -> Ship.Ship_ID"
+    },
+    {
+      "task_id": "train_5387",
+      "question": "For which product was there a problem reported by Christop Berge, with closure authorised by Ashley Medhurst? Return the product ids.",
+      "db_id": "tracking_software_problems",
+      "schema": "table Problem_Category_Codes: problem_category_code text, problem_category_description text\ntable Problem_Log: problem_log_id number, assigned_to_staff_id number, problem_id number, problem_category_code text, problem_status_code text, log_entry_date time, log_entry_description text, log_entry_fix text, other_log_details text\ntable Problem_Status_Codes: problem_status_code text, problem_status_description text\ntable Product: product_id number, product_name text, product_details text\ntable Staff: staff_id number, staff_first_name text, staff_last_name text, other_staff_details text\ntable Problems: problem_id number, product_id number, closure_authorised_by_staff_id number, reported_by_staff_id number, date_problem_reported time, date_problem_closed time, problem_description text, other_problem_details text\nforeign keys: Problem_Log.problem_status_code -> Problem_Status_Codes.problem_status_code; Problem_Log.problem_id -> Problems.problem_id; Problem_Log.assigned_to_staff_id -> Staff.staff_id; Problem_Log.problem_category_code -> Problem_Category_Codes.problem_category_code; Problems.reported_by_staff_id -> Staff.staff_id; Problems.product_id -> Product.product_id; Problems.closure_authorised_by_staff_id -> Staff.staff_id"
+    }
+  ]
+}
