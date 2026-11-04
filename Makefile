@@ -22,6 +22,16 @@ test:
 round:
 	uv run python -m loop.run --rounds $(or $(N),20)
 
+# SkillAxe 전용 명령. 기존 starter의 round/test 명령은 유지한다.
+skillaxe-round:
+	uv run --frozen --extra skillaxe python -m loop.run --config $(or $(CONFIG),methods/skillaxe/configs/loop.yaml) --rounds $(or $(N),1)
+
+skillaxe-eval:
+	uv run --frozen --extra skillaxe python -m methods.skillaxe.evaluate_skill --config $(or $(CONFIG),methods/skillaxe/configs/loop.yaml) --split validation --condition $(or $(CONDITION),candidate) $(if $(RUN),--run $(RUN)) $(if $(filter 1,$(RECOVER)),--recover-candidate)
+
+skillaxe-test:
+	uv run --frozen --extra skillaxe python -m methods.skillaxe.evaluate_skill --config $(or $(CONFIG),methods/skillaxe/configs/loop.yaml) --split test $(if $(RUN),--run $(RUN))
+
 results:
 	uv run python -m scripts.results --week $(W) --config $(or $(CONFIG),methods/skillaxe/configs/loop.yaml)
 

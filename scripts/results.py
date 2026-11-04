@@ -20,6 +20,8 @@ def skillaxe_report(rows, week):
     print(f"근거: {run}")
     manifest=read(run/'manifest.json')
     print(f"진단 대상: 실제 오답 {len(manifest.get('task_ids',[]))}개")
+    candidate=read(run/'candidate.json')
+    version=candidate.get('version','L1')
     scores={}
     for stage in ('no_skill','parent','candidate'):
         record=read(run/f'external_evaluation/{stage}/evaluation.json')
@@ -27,14 +29,13 @@ def skillaxe_report(rows, week):
     def score(stage):
         r=scores.get(stage)
         return f"{r['correct']}/{r['n']}" if r else '미평가'
-    print(f"validation: No-skill {score('no_skill')} / 초기 {score('parent')} → 후보 L1 {score('candidate')}")
+    print(f"validation: No-skill {score('no_skill')} / parent {score('parent')} → 후보 {version} {score('candidate')}")
     print(f"활성 스킬: {score('candidate') if last.get('champion') else score('parent')} (후보 채택: {last['accepted']})")
     followup=read(run/'evaluation_followup.json')
     if followup:
         print(f"후보 점수: 보완 평가 ({followup.get('status')}); 자동 검증·채택과 별도")
-    candidate=read(run/'candidate.json')
     tests=[]
-    for path in sorted(run.parent.glob('test-*/single_run_result.json')):
+    for path in [*sorted(run.parent.glob('test-*/single_run_result.json')),run/'test/single_run_result.json']:
         record=read(path)
         if (record.get('status')=='complete' and candidate.get('content_hash')
                 and record.get('skill_hash')==candidate['content_hash']
@@ -42,7 +43,7 @@ def skillaxe_report(rows, week):
             tests.append((path,record))
     if tests:
         path,record=tests[-1];result=record['selected_run']
-        print(f"test: L1 {result['correct']}/{result['n']} ({100*result['correct']/result['n']:.1f}%), 1회 보고")
+        print(f"test: {version} {result['correct']}/{result['n']} ({100*result['correct']/result['n']:.1f}%), 1회 보고")
         print(f"test 근거: {path}")
         if record.get('additional_completed_runs'):
             print(f"test 추가 완료 {record['additional_completed_runs']}회는 사용자 요청에 따라 보고 점수에서 제외")

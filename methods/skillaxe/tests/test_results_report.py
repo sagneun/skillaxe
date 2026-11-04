@@ -20,7 +20,7 @@ class ResultsReportTests(unittest.TestCase):
                 save(run/f'external_evaluation/{stage}/evaluation.json',{'skill_hash':None if stage=='no_skill' else ('candidate-hash' if stage=='candidate' else 'parent-hash'),'result':{'correct':correct,'n':100}})
             save(run/'evaluation_followup.json',{'mode':'evaluation_only','status':'complete'})
             test={'status':'complete','skill_hash':'candidate-hash','source_skill':str(run/'candidate.json'),'selected_run':{'correct':141,'n':200},'additional_completed_runs':2}
-            save(root/'test-a/single_run_result.json',test)
+            save(run/'test/single_run_result.json',test)
             save(root/'test-z/single_run_result.json',{**test,'skill_hash':'other','selected_run':{'correct':199,'n':200}})
             row={'round':8,'week':4,'skillaxe':{'output':str(run)},'full':{'before':71,'after':None,'n':100},'accepted':False,'rejected_by':'guard','reason':'unknown diagnosis reference','llm_calls':92,'seconds':211.8,'ruler':'skipped','week_correction':{'from':0,'to':4}}
             log=root/'rounds.jsonl';log.write_text(json.dumps(row)+'\n')

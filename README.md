@@ -4,6 +4,82 @@
 
 개선 대상은 스킬 문서다. SkillAxe 모드의 Refiner는 에이전트 코드나 loop를 수정하지 않는다. 진단 LLM은 정답 SQL 없이 수정 근거를 만들고, 생성된 후보의 최종 채택은 기존 evaluator·kernel·champion 규칙으로 결정한다.
 
+## 처음 clone한 사람의 실행 순서
+
+**Python 3.11 이상, uv, Git, make와 유효한 API 키**가 필요하다. Linux/macOS 터미널 또는 Windows의 WSL에서 저장소 루트 기준으로 실행한다. 최초 설치·임베딩 모델 다운로드에는 인터넷이 필요하다. 실제 실험과 평가는 유료 LLM 호출을 발생시킨다.
+
+### 1) 설치와 개인 설정
+
+```bash
+git clone https://github.com/sagneun/skillaxe.git
+cd skillaxe
+uv sync --frozen --extra skillaxe
+cp .env.example .env
+```
+
+`.env`의 `LLM_API_KEY=sk-or-...`를 본인의 OpenRouter 키로 바꾼다. SQL 에이전트·Improver·진단 모델의 기본값은 `openai/gpt-4.1-nano`다. 진단 모델만 바꾸려면 `SKILLAXE_LLM_MODEL`과 해당 모델을 제공하는 `SKILLAXE_LLM_PROVIDER`를 함께 확인한다. 기본 Azure 제한이 다른 모델에도 상속될 수 있다. `LLM_CACHE`는 비워 둔다.
+
+후보를 로컬 Git commit으로 기록하므로 다음 명령으로 Git 작성자 설정을 확인한다.
+
+```bash
+git var GIT_AUTHOR_IDENT
+```
+
+설정이 없다는 오류가 나면 이 저장소에서 `git config user.name "본인 이름"`, `git config user.email "본인 이메일"`을 실행한다. 초기 스킬·DB·평가 데이터는 이미 Git에 포함돼 있으므로 스킬 복사나 별도 초기 commit은 필요 없다. API 키와 실행 로그는 Git에 올라가지 않는다.
+
+### 2) 설치 확인 — LLM 호출 없음
+
+```bash
+uv run --frozen --extra skillaxe python -m unittest discover -s methods/skillaxe/tests -q
+```
+
+### 3) SkillAxe 실험 1 round
+
+```bash
+make skillaxe-round
+make results W=4
+```
+
+현재 parent를 validation 100문제로 평가하고, 실제 오답 최대 20개를 진단해 후보를 생성한다. 검증을 통과하면 screen/full 평가와 기존 채택 판정까지 진행한다. 기본 `week`는 4이며 실행 기록은 `logs/skillaxe/round-<번호>-<id>/`에 생성된다. 모델이 유효한 후보를 만들지 못하면 실패 이유를 기록하며, 성능 향상을 보장하지 않는다.
+
+**기본 `make round`·`make test`는 기존 starter용이다. SkillAxe에는 아래 전용 명령을 사용한다.** 이 저장소에는 `ruler-v14` 태그가 없어 현재는 `ruler: skipped`가 출력된다. 기준 태그를 검증한 실험으로 해석하면 안 된다.
+
+### 4) 비교 점수와 후보 보완 평가
+
+```bash
+make skillaxe-eval CONDITION=no_skill
+make skillaxe-eval
+```
+
+첫 명령은 No-skill validation 100문제를 평가한다. 두 번째는 후보 validation을 평가하며 이미 완료된 같은 후보의 결과가 있으면 재사용한다. 자동 채택 상태를 바꾸지 않는다.
+
+후보가 **진단 ID 참조 오류** 때문에 저장되지 않았지만 `refiner/`에 생성 응답이 남아 있다면, 문서를 수정하지 않는 보완 평가를 명시적으로 실행할 수 있다.
+
+```bash
+make skillaxe-eval RECOVER=1
+```
+
+이는 검증 오류를 고치거나 채택하는 명령이 아니다. 원래 거절 사유를 보존하고 평가만 한다. JSON 문서 형식이 잘못됐거나 생성 응답이 없는 경우에는 평가할 수 없으며 오류를 표시한다. 진단 실패 시 원인을 해결한 뒤 새로운 round를 실행한다.
+
+### 5) 고정 후보의 test 1회 평가 → 결과 확인
+
+후보를 확정한 뒤 한 번만 실행한다. test 결과를 보고 스킬을 수정하거나 후보를 고르지 않는다.
+
+```bash
+make skillaxe-test
+make results W=4
+```
+
+`skillaxe-test`는 후보를 복사해 동결하고 test를 **1회** 실행한다. 기존 고정 채점기로 채점한 합계만 `round-*/test/single_run_result.json`에 저장한다. 같은 후보의 완료 결과가 있으면 다시 호출하지 않는다. 활성 스킬은 바꾸지 않는다. `results`는 validation·test·자동 round 작업량·시간과 미평가/거절 상태를 출력하며, 별도 평가 비용을 자동 round 비용에 합산하지 않는다.
+
+명령은 설정한 주차의 최신 round를 선택한다. 다른 round를 지정할 때는 출력된 폴더명을 사용한다.
+
+```bash
+make skillaxe-test RUN=logs/skillaxe/round-1-실제ID
+```
+
+다른 설정은 `CONFIG=설정파일`, round 수는 `make skillaxe-round N=숫자`로 지정한다. 이전 실험 로그와 후보는 Git 제외 대상이므로 새 clone에는 없다. 아래의 과거 점수를 바로 출력하는 것이 아니라, **본인이 실행해 생성한 결과를 조회**한다. 대시보드는 선택 사항이며 실험에는 필요 없다.
+
 ## 1. 디렉터리 구조
 
 ```text
@@ -162,7 +238,7 @@ RULER_OVERRIDE=1 uv run --frozen --extra skillaxe python -m loop.run \
 
 새 저장소에는 기존 `ruler-v14` 태그가 없어 현재 실행은 `ruler: skipped`로 기록된다. 위 환경변수만으로 `override`가 기록되는 것은 아니다. 기존 기준 태그가 있고 파일이 다를 때 `RULER_OVERRIDE=1`로 차이를 명시할 수 있다. 기준 태그를 새 구현에 맞춰 임의로 만들지 않았다. 최종 채점·kernel accept·champion 규칙은 유지한다.
 
-**`make round`는 기본 `config.yaml`을 사용하므로 위 SkillAxe 실행과 다르다. `make test`도 별도 SkillAxe archive와 활성 스킬에 연결되어 있지 않다.** 현재 연결 범위는 loop의 validation 평가까지다.
+**`make round`는 기본 `config.yaml`을 사용하므로 위 SkillAxe 실행과 다르다. `make test`도 별도 SkillAxe archive와 활성 스킬에 연결되어 있지 않다.** SkillAxe 후보의 test는 `make skillaxe-test`로 실행한다.
 
 ### 주요 설정
 
@@ -187,7 +263,7 @@ RULER_OVERRIDE=1 uv run --frozen --extra skillaxe python -m loop.run \
 
 ```text
 logs/skillaxe/
-├── archive.json                parent·후보·champion 정보
+├── korean-archive.json         parent·후보·champion 정보
 ├── rounds.jsonl                round별 요약
 ├── embedding-cache/            공통 임베딩 캐시
 └── round-<N>-<id>/
@@ -206,7 +282,7 @@ logs/skillaxe/
         └── candidate/          후보 전체 평가
 ```
 
-실제로 도달한 단계의 기록만 생성된다. 진단은 `external_evaluation/`을 읽지 않는다. 후보가 거절되거나 실행이 실패해도 이미 저장한 기록은 남긴다. 중간 단계부터 자동 재개하는 기능은 없으며 재실행하면 새 round 폴더를 만든다.
+실제로 도달한 단계의 기록만 생성된다. 진단은 `external_evaluation/parent/traces.jsonl`의 실제 실행 증거를 읽으며, 정답 SQL과 채점 결과를 LLM에 전달하지 않는다. 후보가 거절되거나 실행이 실패해도 이미 저장한 기록은 남긴다. 중간 단계부터 자동 재개하는 기능은 없으며 재실행하면 새 round 폴더를 만든다.
 
 ## 6. 검증
 
@@ -217,7 +293,7 @@ PYTHONDONTWRITEBYTECODE=1 uv run --frozen --extra skillaxe python \
 
 테스트는 모의 LLM, 고정 임베딩, 임시 SQLite를 사용해 진단 수식·실행 증거·후보 검증·기존 loop의 채택/거절 연결을 확인한다. 의존성 설치 후 테스트 자체에는 유료 LLM 호출이나 공식 test 데이터가 필요하지 않다.
 
-테스트 통과와 실제 성능 향상은 별개다. 실제 validation 실행 결과는 아래와 같으며 공식 test는 실행하지 않았다.
+테스트 통과와 실제 성능 향상은 별개다. 실제 실행 결과와 이후 수행한 L1 test 결과는 아래에 구분해 기록했다.
 
 
 ## 7. 실제 실행 결과 (2026-11-04)

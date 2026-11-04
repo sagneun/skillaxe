@@ -7,6 +7,7 @@
 - `brief.py`: 진단 결과를 수정 근거와 보존 지침으로 정리
 - `skills.py`: 스킬 로딩·해시·후보 검증
 - `generate_initial.py`: 초기 스킬 한 번 생성 후 동결
+- `evaluate_skill.py`: 기존 실행·채점기를 재사용한 후보 validation 보완 평가와 test 1회 평가
 - `prompts/`: 한국어 스킬·진단·수정 출력 지침
 - `configs/loop.yaml`: 현재 한국어 실험 설정
 - `skills/sqlite-text-to-sql-ko-L0/`: 한국어 초기 스킬과 생성 근거
