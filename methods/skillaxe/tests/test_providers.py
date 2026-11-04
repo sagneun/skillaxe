@@ -26,6 +26,28 @@ class ProviderPolicyTests(unittest.TestCase):
         connection.start()
         self.addCleanup(connection.stop)
 
+    def test_diagnostic_model_is_independent_of_agent_and_improver(self):
+        with patch.dict(os.environ, {
+            "LLM_MODEL": "nano", "IMPROVER_LLM_MODEL": "nano",
+            "SKILLAXE_LLM_MODEL": "diagnostic-model",
+        }):
+            judge = providers.Client(role="diagnostic", independent=True)
+            self.assertEqual(judge.settings.model, "diagnostic-model")
+            self.assertEqual(providers.resolve("agent").model, "nano")
+            self.assertEqual(providers.resolve("improver").model, "nano")
+            self.assertEqual(judge._endpoint.base_url, providers.resolve("agent").base_url)
+
+    def test_diagnostic_settings_fall_back_to_base_not_improver(self):
+        with patch.dict(os.environ, {"IMPROVER_LLM_MODEL": "improver-only"}):
+            self.assertEqual(providers.Client(role="diagnostic").settings.model, "fixture")
+        with patch.dict(os.environ, {
+            "SKILLAXE_LLM_BASE_URL": "https://judge.invalid/v1",
+            "SKILLAXE_LLM_API_KEY": "test-only-key",
+        }):
+            endpoint = providers.resolve("diagnostic")
+            self.assertEqual(endpoint.base_url, "https://judge.invalid/v1")
+            self.assertEqual(endpoint.api_key, "test-only-key")
+
     def test_both_call_policies_write_provider_usage_log(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "usage.jsonl"

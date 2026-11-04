@@ -59,8 +59,8 @@ class Client:
     """
     def __init__(self, *, role: str, max_tokens: int = 1024,
                  independent: bool = False, single_request: bool = False):
-        if role not in ("agent", "improver"):
-            raise ValueError("role must be agent or improver")
+        if role not in ("agent", "improver", "diagnostic"):
+            raise ValueError("role must be agent, improver or diagnostic")
         self.independent = independent or single_request
         self.single_request = single_request
         self._check_cache()
@@ -121,8 +121,8 @@ def _kind(url: str) -> str:
 
 
 def resolve(role: str) -> Endpoint:
-    """role="improver" 면 IMPROVER_* 를 먼저 보고, 없으면 LLM_* 를 쓴다."""
-    prefix = "IMPROVER_" if role == "improver" else ""
+    """역할별 IMPROVER_* / SKILLAXE_* 설정을 우선하고 없으면 LLM_*를 쓴다."""
+    prefix = {"improver": "IMPROVER_", "diagnostic": "SKILLAXE_"}.get(role, "")
     g = lambda k, d=None: os.environ.get(f"{prefix}{k}") or os.environ.get(k, d)
     base, model = g("LLM_BASE_URL"), g("LLM_MODEL")
     if not base or not model:

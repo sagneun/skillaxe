@@ -107,6 +107,8 @@ loop/run.py
 - Compliance는 먼저 작업을 숨긴 채 규칙을 추출하고, 이후 작업별로 판정한다. 관련 규칙만 집계하며 `f=0`인 규칙은 보존 지침으로 전달한다.
 - Coverage 경로는 스킬 본문 없이 생성한다. 경로 후보는 검증된 정답이 아니며 유사도는 정답률이 아니다.
 
+진단 프롬프트는 `methods/skillaxe/prompts/`에 한국어로 작성되어 있다. 품질 영향은 요청한 출력과 실제 SQL·실행 증거를 비교하고, 지침 준수는 스킬 원문의 실행 가능한 규칙과 적용 조건을 추출해 규칙별로 판단한다. 해결 경로는 스키마에 근거한 전략과 적용 조건을 생성한다. 적용 조건(Trigger) 축은 파서·임베딩으로 계산하므로 별도 LLM 프롬프트가 없다. 프롬프트를 수정해도 기존 로그와 점수는 바뀌지 않으며, 새 진단 결과는 다음 실행에서 생성된다.
+
 진단과 Refiner 입력에는 정답 SQL·정오답 표시·최종 채택 이력을 전달하지 않는다. 다만 **최종 채택과 다음 parent 선택은 기존 정답 기반 평가 정책**을 사용한다.
 
 관련 규칙이나 비교할 문구가 없으면 이유와 함께 `N/A`로 기록한다. API·파싱·임베딩 실패는 `unavailable`이며, 한 축이라도 이 상태이면 Refiner 호출을 중단한다. 실패를 0점으로 대체하지 않는다.
@@ -131,6 +133,8 @@ LLM_CONCURRENCY=8
 ```
 
 필요하면 `LLM_PROVIDER`로 서빙 provider를 지정한다. Improver 모델은 기존 `IMPROVER_LLM_*` 설정을 사용하며, 별도 설정이 없으면 기본 모델 설정을 따른다. SkillAxe 실행 시 환경변수와 `.env`의 `LLM_CACHE`는 제거하거나 비워 둔다.
+
+SkillAxe 진단 모델은 `.env`의 `SKILLAXE_LLM_MODEL`로 별도 지정한다. 초기값은 `openai/gpt-4.1-nano`이며, 이 값만 변경하면 SQL 에이전트와 Improver에 영향을 주지 않는다. 진단용 접속 정보가 다르면 `SKILLAXE_LLM_BASE_URL`, `SKILLAXE_LLM_API_KEY`, `SKILLAXE_LLM_PROVIDER`도 지정할 수 있다. 미설정 값은 기본 `LLM_*`를 사용하며 `IMPROVER_LLM_*`를 상속하지 않는다. 변경은 다음 실행부터 적용되며 실제 진단 모델은 실행 기록의 `judge.model`에 저장된다.
 
 한국어 실험의 Trigger는 spaCy `ko_core_news_sm` 3.8.0, Trigger·Coverage는 다국어 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`를 공유한다. 한국어 명사구는 의존 구문의 명사와 복합명사 수식어로 추출하며, 부정 표현의 지배 범위를 사용한다. 영문 파서는 기존 기록 재현용으로 유지한다. 임베딩 revision은 설정에 고정하며 최초 사용 시 모델 파일을 다운로드한다. 텍스트와 모델 설정에 따른 임베딩 캐시는 별도로 유지한다.
 
