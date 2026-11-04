@@ -23,7 +23,7 @@ round:
 	uv run python -m loop.run --rounds $(or $(N),20)
 
 results:
-	uv run python -m scripts.results --week $(W)
+	uv run python -m scripts.results --week $(W) --config $(or $(CONFIG),methods/skillaxe/configs/loop.yaml)
 
 ruler:   # 운영자만: 지금 commit을 고정 파일의 기준으로. loop/kernel.py의 RULER_TAG 번호를 올린 뒤 실행 (tag를 origin에 push)
 	T=$$(uv run python -c "from loop.kernel import RULER_TAG; print(RULER_TAG)"); git tag -f $$T && git push -f origin $$T && echo "tagged $$T"

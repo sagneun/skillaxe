@@ -1,6 +1,6 @@
 # 기존 loop의 스킬 모드 예제. kernel/채점/champion은 그대로 사용한다.
 rounds: 1
-week: 0
+week: 4
 validation: data/validation.json
 fewshot_pool: data/fewshot_pool.json
 tables: data/tables.json
