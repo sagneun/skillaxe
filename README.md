@@ -173,7 +173,7 @@ RULER_OVERRIDE=1 uv run --frozen --extra skillaxe python -m loop.run \
 | `target_kind` / `skill_path` | `skill` / 활성 스킬 JSON 경로 |
 | `editable_blocks` / `evolve_files` | 스킬과 활성 파일만 개선 대상으로 지정 |
 | `skillaxe.task_ids` | 진단 후보군: validation 100개 전체. 실제 진단 대상은 매 round의 오답에서 선택 |
-| `on_round_start.skillaxe_diagnose_n` | 최대 진단 문제 수 5개. 오류 유형·DB별로 분산 선택하고 round seed로 재현 |
+| `on_round_start.skillaxe_diagnose_n` | 최대 진단 문제 수 20개. 오류 유형·DB별로 분산 선택하고 round seed로 재현 |
 | `skillaxe.replicates` | 작업별 실행 1회 |
 | `skillaxe.agent_max_tokens` / `sql_timeout_sec` | 512 토큰 / SQL 실행 5초. 진단과 최종 평가에 동일하게 전달 |
 | `skillaxe.path_count` / `chunk_chars` | Coverage 경로 3개 / 본문 청크 최대 1200자 |
@@ -297,7 +297,7 @@ round 7은 약 956초(16분)가 걸렸다. 진단 모델의 순차 호출 시간
 
 round 7까지는 고정 5문제를 반복 진단했고, 그 5문제는 초기 스킬의 전체 평가에서 모두 정답이었다. 이 표본 선택 문제 때문에 기존 결과를 실패 사례 기반 개선 실험으로 해석할 수 없다.
 
-현재는 `hooks/on_round_start.py`가 이번 parent 평가의 validation 오답에서 최대 5개를 선택한다. 실행·생성 오류와 결과 불일치를 번갈아 다루고 DB도 분산한다. 정답 SQL 실행 실패(`gold failed`)는 에이전트 실패에서 제외한다. 선택 대상과 오류 분류는 manifest의 `selection`에 보존하며, 진단 LLM·Improver에는 이 채점 정보를 보내지 않는다. 실패가 없으면 정답 문제로 채우지 않고 진단·수정을 건너뛴다(진단 상태 `no_failures`; 기존 loop에서는 브리핑 미준비로 중단).
+현재는 `hooks/on_round_start.py`가 이번 parent 평가의 validation 오답에서 최대 20개를 선택한다. 실행·생성 오류와 결과 불일치를 번갈아 다루고 DB도 분산한다. 정답 SQL 실행 실패(`gold failed`)는 에이전트 실패에서 제외한다. 선택 대상과 오류 분류는 manifest의 `selection`에 보존하며, 진단 LLM·Improver에는 이 채점 정보를 보내지 않는다. 실패가 없으면 정답 문제로 채우지 않고 진단·수정을 건너뛴다(진단 상태 `no_failures`; 기존 loop에서는 브리핑 미준비로 중단).
 
 `hooks/diagnose.py`는 선택된 문제의 `external_evaluation/parent/traces.jsonl`을 재사용한다. 스킬 적용 SQL을 다시 생성하지 않으므로 진단에서 원래 실패가 사라지지 않는다. No-skill 비교 실행만 추가하며, 문제·스킬·DB·실행 설정의 기존 일치 검증을 유지한다. 선택된 실패 trace가 없으면 재생성으로 덮어쓰지 않고 진단 실패로 기록한다. JSON 복원은 기존 `Trace` 계약에서 처리하며 별도 runner/client는 추가하지 않았다.
 

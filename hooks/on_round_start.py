@@ -11,7 +11,7 @@ from pathlib import Path
 from loop.context import RoundContext
 
 ARMS = ["any", "exec_error", "mismatch"]   # 겨냥할 오답 유형. 선택지 하나 = "블록:유형" (예: "code:exec_error")
-KNOBS = {"self_select": ("bool", True), "skillaxe_diagnose_n": ("int", 1, 100, 5)}
+KNOBS = {"self_select": ("bool", True), "skillaxe_diagnose_n": ("int", 1, 100, 20)}
 KNOB_DOCS = {"skillaxe_diagnose_n": "Maximum current-parent validation failures to diagnose, stratified by error type and database; never fill with correct tasks", "self_select": "if true, each round picks which open block to patch and which wrong answers to target, from past round outcomes (UCB1 on accept rate); if false, blocks rotate and the fixed target_error_class value is used"}
 CHOICES = Path("logs/self_select.jsonl")   # round마다 고른 값. rounds.jsonl과 round 번호로 이어 보상(accept 여부)을 센다
 

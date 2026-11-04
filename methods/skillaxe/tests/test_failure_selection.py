@@ -21,12 +21,18 @@ class FailureSelectionTests(unittest.TestCase):
 
     def test_selects_current_failures_not_first_five_correct_tasks(self):
         rows=[{'id': f'ok{i}', 'correct': True, 'error': None} for i in range(5)]
-        rows += [{'id': f'bad{i}', 'correct': False, 'error': 'result mismatch'} for i in range(8)]
+        rows += [{'id': f'bad{i}', 'correct': False, 'error': 'result mismatch'} for i in range(30)]
         ctx=self.context(rows);on_round_start(ctx)
-        self.assertEqual(len(ctx.skillaxe_selection['task_ids']), 5)
+        self.assertEqual(len(ctx.skillaxe_selection['task_ids']), 20)
         self.assertTrue(all(i.startswith('bad') for i in ctx.skillaxe_selection['task_ids']))
         other=self.context(rows);on_round_start(other)
         self.assertEqual(ctx.skillaxe_selection, other.skillaxe_selection)
+
+    def test_fewer_than_twenty_failures_uses_only_available_failures(self):
+        rows=[{'id':f'bad{i}','correct':False,'error':'result mismatch'} for i in range(8)]
+        rows += [{'id':'ok','correct':True,'error':None}]
+        ctx=self.context(rows);on_round_start(ctx)
+        self.assertEqual(set(ctx.skillaxe_selection['task_ids']),{f'bad{i}' for i in range(8)})
 
     def test_spreads_sample_over_error_types_and_databases(self):
         rows=[{'id': f'e{i}', 'correct': False, 'error': 'OperationalError: no such column', 'db':'a'} for i in range(10)]

@@ -17,7 +17,7 @@ evolve_files: [methods/skillaxe/skills/active.json]
 log: logs/skillaxe/rounds.jsonl
 hook_changed: diagnose,build_prompt,propose,on_round_start - SkillAxe four-axis diagnosis and skill refinement
 skillaxe:
-  # 진단 후보군: validation 전체. on_round_start가 현재 오답 중 최대 5개를 선택한다.
+  # 진단 후보군: validation 전체. on_round_start가 현재 오답 중 최대 20개를 선택한다.
   task_ids: [
     train_5749, train_4538, train_5743, train_3880, train_6232, train_3865, train_5683, train_5387, train_4532, train_4922,
     train_5471, train_5383, train_6266, train_5478, train_0286, train_3620, train_6263, train_4069, train_4075, train_6253,
