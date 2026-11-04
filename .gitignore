@@ -1,0 +1,11 @@
+logs/
+__pycache__/
+.env
+.venv/
+.venv
+knobs/challenger.py
+
+# Local documentation and planning artifacts (not published)
+docs/
+.superpowers/
+superpowers/

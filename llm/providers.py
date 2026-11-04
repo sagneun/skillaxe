@@ -1,0 +1,263 @@
+"""LLM provider 계층. 어떤 서버(LM Studio, OpenRouter, Azure OpenAI)든 같은 chat 호출로 쓰게 한다.
+
+resolve(role) -> Endpoint : 환경 변수에서 endpoint를 읽고 provider 종류를 URL로 판별한다.
+complete(ep, ...) -> str  : 호출. 재시도와 모델별 파라미터 차이를 여기서 흡수한다.
+
+provider 종류
+- azure      : https://<리소스>.openai.azure.com/  →  /openai/v1/ 을 붙인다. LLM_MODEL = 배포 이름.
+- openrouter : https://openrouter.ai/api/v1       →  LLM_PROVIDER 가 있으면 그 upstream으로 고정(양자화 고정).
+- openai     : 그 밖의 OpenAI 호환 서버 (LM Studio 등).
+
+모델별 차이: 추론 모델(gpt-5 계열 등)은 max_tokens 대신 max_completion_tokens를 요구하고 temperature 0을 거부한다.
+모델 이름으로 분기하지 않고, 서버가 400으로 거부한 파라미터를 보고 바꿔 다시 보낸 뒤 기억한다.
+"""
+from __future__ import annotations
+import hashlib, json, math, os, random, sqlite3, sys, threading, time
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class Endpoint:
+    kind: str                       # "azure" | "openrouter" | "openai"
+    base_url: str
+    model: str
+    api_key: str
+    extra_body: dict | None = field(default=None, hash=False, compare=False)
+
+
+@dataclass(frozen=True)
+class ModelSettings:
+    """공개 가능한 호출 조건만 기록한다. API key나 endpoint URL은 넣지 않는다."""
+    provider: str
+    model: str
+    mode: str = "live"
+    temperature: float = 0.0
+    max_tokens: int = 1024
+    # 같은 이름의 모델도 endpoint/upstream이 다를 수 있다. 공개 주소 대신
+    # 비밀 값(API key)을 제외한 연결 설정의 해시로 조건을 구분한다.
+    endpoint_hash: str | None = None
+
+    def __post_init__(self):
+        for name in ("provider", "model"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be non-empty text")
+        if self.mode not in ("live", "mock"):
+            raise ValueError("mode must be live or mock")
+        if type(self.max_tokens) is not int or self.max_tokens <= 0:
+            raise ValueError("max_tokens must be a positive integer")
+        if type(self.temperature) not in (int, float) or not math.isfinite(self.temperature):
+            raise ValueError("temperature must be finite")
+
+
+class Client:
+    """공통 호출 설정. SQL 생성·진단·스킬 생성 모두 같은 클래스를 사용한다.
+
+    환경 파일 로딩은 실행 진입점이 맡는다. 기존 complete() 함수의 기본 동작은
+    유지한다. independent=True는 캐시를 거부하고 래퍼 재시도를 1회로 제한한다.
+    single_request=True는 JSON 응답을 SDK 재시도·파라미터 교정 없이 한 번 요청한다.
+    """
+    def __init__(self, *, role: str, max_tokens: int = 1024,
+                 independent: bool = False, single_request: bool = False):
+        if role not in ("agent", "improver"):
+            raise ValueError("role must be agent or improver")
+        self.independent = independent or single_request
+        self.single_request = single_request
+        self._check_cache()
+        if os.environ.get("LLM_BACKEND") == "mock":
+            raise ValueError("Client requires a real provider; use a mock implementation for demos")
+        self._endpoint = resolve(role)
+        endpoint_hash = hashlib.sha256(json.dumps(
+            {"url": self._endpoint.base_url, "options": self._endpoint.extra_body},
+            sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        ).encode()).hexdigest()
+        self.settings = ModelSettings(provider=self._endpoint.kind, model=self._endpoint.model,
+                                      max_tokens=max_tokens, endpoint_hash=endpoint_hash)
+        self.response_metadata = {}
+
+    def _check_cache(self):
+        if self.independent and os.environ.get("LLM_CACHE"):
+            raise ValueError("LLM_CACHE must be unset for independent calls")
+
+    def complete(self, messages: list[dict[str, str]]) -> str:
+        self._check_cache()
+        self.response_metadata = {}
+        if self.single_request:
+            self.response_metadata = {"sdk_max_retries": 0, "usage": None}
+            response = _request(self._endpoint, messages, {
+                "temperature": self.settings.temperature,
+                "max_tokens": self.settings.max_tokens,
+                "response_format": {"type": "json_object"},
+            }, sdk_max_retries=0)
+            choice, usage = response.choices[0], response.usage
+            self.response_metadata.update({
+                "response_id": response.id, "finish_reason": choice.finish_reason,
+                "usage": None if usage is None else {
+                    "prompt_tokens": usage.prompt_tokens,
+                    "completion_tokens": usage.completion_tokens,
+                    "total_tokens": usage.total_tokens,
+                },
+            })
+            return choice.message.content or ""
+        return complete(self._endpoint, messages, temperature=self.settings.temperature,
+                        max_tokens=self.settings.max_tokens, retries=1 if self.independent else 6)
+
+
+def _kind(url: str) -> str:
+    if ".openai.azure.com" in url:
+        return "azure"
+    if "openrouter.ai" in url:
+        return "openrouter"
+    return "openai"
+
+
+def resolve(role: str) -> Endpoint:
+    """role="improver" 면 IMPROVER_* 를 먼저 보고, 없으면 LLM_* 를 쓴다."""
+    prefix = "IMPROVER_" if role == "improver" else ""
+    g = lambda k, d=None: os.environ.get(f"{prefix}{k}") or os.environ.get(k, d)
+    base, model = g("LLM_BASE_URL"), g("LLM_MODEL")
+    if not base or not model:
+        raise RuntimeError("LLM_BASE_URL / LLM_MODEL 환경 변수가 없습니다")
+    kind = _kind(base)
+    extra = None
+    if kind == "azure" and "/openai/" not in base:
+        base = base.rstrip("/") + "/openai/v1/"
+    if kind == "openrouter" and g("LLM_PROVIDER"):
+        extra = {"provider": {"order": [g("LLM_PROVIDER")], "allow_fallbacks": False}}
+    return Endpoint(kind, base, model, g("LLM_API_KEY", "none"), extra)
+
+
+_clients: dict = {}
+_quirks: dict = {}   # (base_url, model) -> {"max_completion_tokens": bool, "no_temperature": bool}
+
+
+def _client(ep: Endpoint):
+    from openai import OpenAI
+    key = (ep.base_url, ep.api_key)
+    if key not in _clients:
+        _clients[key] = OpenAI(base_url=ep.base_url, api_key=ep.api_key, timeout=120)
+    return _clients[key]
+
+
+_FIX = {"max_tokens": "max_completion_tokens", "temperature": "no_temperature"}
+
+
+def _adapt(q: dict, tried: set, e, model: str) -> bool:
+    """400 오류가 추론 모델의 파라미터 제약이면 q를 고치고 True(바로 재시도). 아니면 False.
+    tried는 호출 하나 안에서 이미 바꿔 본 파라미터. 병렬 호출이 같은 400을 동시에 받아도 각자 한 번씩 재시도한다."""
+    body = getattr(e, "body", None) or {}
+    err = body.get("error", body) if isinstance(body, dict) else {}
+    param = err.get("param") if isinstance(err, dict) else None
+    if param not in _FIX or param in tried:
+        return False
+    tried.add(param)
+    if not q.get(_FIX[param]):
+        q[_FIX[param]] = True
+        if param == "temperature":
+            print(f"[llm] {model}: temperature 지정 불가 → 기본값으로 호출. 평가 조건 3(temperature 0)과 다름", file=sys.stderr, flush=True)
+    return True
+
+
+_db, _lock, _usage_lock = None, threading.Lock(), threading.Lock()
+
+
+def _log_usage(ep: Endpoint, usage) -> None:
+    """LLM_USAGE_LOG가 켜져 있으면 실제 호출(캐시 히트 제외) 토큰 수를 한 줄 append.
+    usage가 없으면(일부 서버) 조용히 무시. 짧은 줄 append는 프로세스 간에도 충돌 없음."""
+    path = os.environ.get("LLM_USAGE_LOG")
+    if not path or usage is None:
+        return
+    line = json.dumps({"model": ep.model, "in": usage.prompt_tokens, "out": usage.completion_tokens})
+    with _usage_lock, open(path, "a") as f:
+        f.write(line + "\n")
+
+
+def _cache():
+    """LLM_CACHE=<sqlite 경로> 일 때만 켠다. loop가 켜고(test_eval은 안 켬) SQL agent subprocess가 물려받는다."""
+    global _db
+    path = os.environ.get("LLM_CACHE")
+    if not path:
+        return None
+    if _db is None:
+        _db = sqlite3.connect(path, check_same_thread=False, timeout=30)
+        _db.execute("PRAGMA journal_mode=WAL")  # loop와 SQL-agent subprocess가 같은 db를 동시에 연다
+        _db.execute("CREATE TABLE IF NOT EXISTS c (k TEXT PRIMARY KEY, v TEXT)")
+    return _db
+
+
+def complete(ep: Endpoint, messages: list[dict], *, temperature: float, max_tokens: int, retries: int = 6) -> str:
+    """temperature 0 호출은 LLM_CACHE가 켜져 있으면 (endpoint, 모델, 메시지, max_tokens, extra_body)로 캐시한다.
+    같은 commit을 다시 재거나 screen 문제를 full에서 다시 풀 때, `route`·`fix`만 바꾼 patch를 잴 때(`generate` 메시지는 그대로) 호출이 줄어든다."""
+    db = _cache() if temperature == 0 else None
+    if db is None:
+        return _call(ep, messages, temperature=temperature, max_tokens=max_tokens, retries=retries)
+    k = hashlib.sha256(json.dumps([ep.base_url, ep.model, messages, max_tokens, ep.extra_body], sort_keys=True).encode()).hexdigest()
+    with _lock:
+        row = db.execute("SELECT v FROM c WHERE k=?", (k,)).fetchone()
+    if row:
+        return row[0]
+    out = _call(ep, messages, temperature=temperature, max_tokens=max_tokens, retries=retries)
+    with _lock:
+        db.execute("INSERT OR REPLACE INTO c VALUES (?, ?)", (k, out)); db.commit()
+    return out
+
+
+def _request(ep: Endpoint, messages: list[dict], parameters: dict, *, sdk_max_retries=None):
+    """SDK 요청과 사용량 로깅의 공통 경로. 재시도 정책은 호출자가 정한다."""
+    connection = _client(ep)
+    if sdk_max_retries is not None:
+        connection = connection.with_options(max_retries=sdk_max_retries)
+    response = connection.chat.completions.create(
+        model=ep.model, messages=messages, extra_body=ep.extra_body, **parameters)
+    _log_usage(ep, response.usage)
+    return response
+
+
+def _call(ep: Endpoint, messages: list[dict], *, temperature: float, max_tokens: int, retries: int) -> str:
+    from openai import APIStatusError, APIConnectionError, APITimeoutError
+    q, attempt, tried = _quirks.setdefault((ep.base_url, ep.model), {}), 0, set()
+    while True:
+        kw: dict = {"max_completion_tokens" if q.get("max_completion_tokens") else "max_tokens": max_tokens}
+        if not q.get("no_temperature"):
+            kw["temperature"] = temperature
+        try:
+            r = _request(ep, messages, kw)
+            return r.choices[0].message.content or ""
+        except (APIStatusError, APIConnectionError, APITimeoutError) as e:
+            status = getattr(e, "status_code", None)
+            if status == 400 and _adapt(q, tried, e, ep.model):
+                continue  # 파라미터만 바꿔 바로 다시 (재시도 횟수에 안 셈)
+            if status is not None and status < 500 and status != 429:
+                raise  # 잘못된 요청·인증 실패는 재시도 의미 없음
+            attempt += 1
+            if attempt >= retries:
+                raise
+            time.sleep(min(60, 2 ** (attempt - 1)) + random.random())
+
+
+if __name__ == "__main__":  # python -m llm.providers : 캐시 확인 (서버 호출 없음)
+    import tempfile
+    calls = []
+    globals()["_call"] = lambda ep, m, **kw: calls.append(kw["temperature"]) or f"out{len(calls)}"
+    ep = Endpoint("openai", "http://x/v1", "m", "k")
+    msg = [{"role": "user", "content": "q"}]
+    assert complete(ep, msg, temperature=0, max_tokens=8) == "out1" and complete(ep, msg, temperature=0, max_tokens=8) == "out2"  # 꺼져 있으면 매번 호출
+    os.environ["LLM_CACHE"] = os.path.join(tempfile.mkdtemp(), "c.sqlite")
+    assert complete(ep, msg, temperature=0, max_tokens=8) == "out3"
+    assert complete(ep, msg, temperature=0, max_tokens=8) == "out3" and len(calls) == 3          # 같은 요청은 캐시
+    assert complete(ep, msg, temperature=0.7, max_tokens=8) == "out4"                           # temperature > 0 은 캐시 안 함
+    assert complete(ep, msg, temperature=0, max_tokens=16) == "out5"                            # max_tokens 다르면 다른 키
+    assert complete(Endpoint("openai", "http://x/v1", "m2", "k"), msg, temperature=0, max_tokens=8) == "out6"  # 모델 다르면 다른 키
+    ep2 = Endpoint("openai", "http://x/v1", "m", "k", {"provider": {"order": ["a"]}})
+    assert complete(ep2, msg, temperature=0, max_tokens=8) == "out7"                                           # extra_body 다르면 다른 키(새 호출)
+    print("cache ok")
+
+    class _U:  # 가짜 usage
+        prompt_tokens, completion_tokens = 10, 20
+    usage_log = os.path.join(tempfile.mkdtemp(), "u.jsonl")
+    os.environ["LLM_USAGE_LOG"] = usage_log
+    _log_usage(ep, _U())
+    _log_usage(ep, None)  # usage 없으면 조용히 무시
+    lines = open(usage_log).read().splitlines()
+    assert len(lines) == 1 and json.loads(lines[0]) == {"model": "m", "in": 10, "out": 20}
+    print("usage log ok")

@@ -1,0 +1,34 @@
+# 기존 loop의 스킬 모드 예제. kernel/채점/champion은 그대로 사용한다.
+rounds: 1
+week: 0
+validation: data/validation.json
+fewshot_pool: data/fewshot_pool.json
+tables: data/tables.json
+db_dir: data/database
+screen_size: 20
+screen_drop: 2
+agent_timeout_sec: 1800
+sql_timeout_sec: 5
+improver_max_tokens: 4096
+target_kind: skill
+skill_path: methods/skillaxe/skills/active.json
+editable_blocks: [skill]
+evolve_files: [methods/skillaxe/skills/active.json]
+log: logs/skillaxe/rounds.jsonl
+hook_changed: diagnose,build_prompt,propose,on_round_start - SkillAxe four-axis diagnosis and skill refinement
+skillaxe:
+  task_ids: [train_5749, train_4538, train_3880, train_6232, train_5387]
+  output_dir: logs/skillaxe
+  archive: logs/skillaxe/archive.json
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  embedding_revision: 1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+  embedding_cache: logs/skillaxe/embedding-cache
+  parser_model: en_core_web_sm
+  parser_version: 3.8.0
+  alpha: 0.5
+  skill_type: SQLite Text-to-SQL
+  path_count: 3
+  chunk_chars: 1200
+  agent_max_tokens: 512
+  judge_max_tokens: 4096
+  replicates: 1

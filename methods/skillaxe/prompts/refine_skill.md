@@ -1,0 +1,4 @@
+Revise the existing English SQLite skill using only the diagnostic brief. Do not solve tasks or infer gold answers. Preserve clear rules whose failure was attributed to the agent (f=0). Treat proposed solution paths as unverified and qualify applicability. N/A is not a zero score. Keep the document unchanged when evidence is insufficient.
+Return ONLY a JSON object with fields:
+{"description":"...","applies_when":["..."],"avoid_when":["..."],"body":"...","changes":[{"diagnosis_ids":["existing diagnosis ID"],"rule_ids":["rule ID when relevant"],"reason":"what changed and why"}]}.
+Do not return skill_id, version, content_hash, filenames or executable code outside the document. The program manages identity/version/files. For no change copy the four original content fields exactly and return an empty changes list. References must occur in the brief. Do not alter numeric evidence.
