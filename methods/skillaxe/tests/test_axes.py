@@ -84,3 +84,19 @@ class KoreanParserTests(unittest.TestCase):
         phrases=TriggerParser('ko_core_news_sm','3.8.0').extract(skill)
         self.assertTrue(phrases)
         self.assertTrue(all(p['polarity']=='negative' for p in phrases))
+    def test_korean_sql_compound_modifier_is_preserved(self):
+        try:
+            import ko_core_news_sm
+        except ImportError:
+            self.skipTest('Korean parser not installed')
+        from methods.skillaxe.diagnostics.trigger import TriggerParser
+        phrases=TriggerParser('ko_core_news_sm','3.8.0').extract(SkillVersion('ko','L0','이 스킬은 SQL 생성에 사용합니다.','절차'))
+        self.assertTrue(any('SQL' in p['text'] for p in phrases))
+
+class SourceLineTests(unittest.TestCase):
+    def test_rule_source_line_is_resolved_without_rewriting(self):
+        from methods.skillaxe.diagnostics.common import ask_json
+        client=SequenceClient(json.dumps({'rules':[{'rule_id':'r1','rule':'조회한다','severity':3,'source_line_id':'s1'}]}))
+        result=ask_json(client,'compliance_rules',{'skill':'**조회**: "SQL"을 작성합니다.'},{'calls':[]})
+        self.assertEqual(result['rules'][0]['source_quote'],'**조회**: "SQL"을 작성합니다.')
+        self.assertNotIn('source_line_id',result['rules'][0])

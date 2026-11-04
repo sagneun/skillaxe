@@ -64,7 +64,8 @@ def diagnose_round(ctx):
                                       options.get('embedding_cache','logs/skillaxe/embedding-cache'))
         parser=TriggerParser(options['parser_model'],options['parser_version'])
         agent=Client(role='agent',max_tokens=options.get('agent_max_tokens',512),independent=True)
-        judge=Client(role='improver',max_tokens=options.get('judge_max_tokens',4096),independent=True)
+        judge=Client(role='improver',max_tokens=options.get('judge_max_tokens',4096),independent=True,
+                     single_request=options.get('judge_json_mode',False))
         state.update(embedding=embeddings.settings,parser=parser.settings,
                      agent=asdict(agent.settings),judge=asdict(judge.settings))
         write_json(root/'skills'/'current.json',{**asdict(skill),'content_hash':skill.content_hash})

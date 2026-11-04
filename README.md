@@ -48,9 +48,14 @@ skillaxe/
 │   ├── prompts/               진단·초기 생성·수정 프롬프트
 │   ├── configs/loop.yaml      SkillAxe 실행 설정
 │   ├── skills/
-│   │   ├── sqlite-text-to-sql-L0/  동결한 초기 스킬과 생성 근거
+│   │   ├── sqlite-text-to-sql-L0/     이전 영문 초기 스킬과 생성 근거
+│   │   ├── sqlite-text-to-sql-ko-L0/  한국어 초기 스킬과 생성 근거
 │   │   └── active.json        실행할 활성 스킬 (최초 준비 시 생성)
 │   └── tests/                 수식·증거 수집·기존 loop 연결 테스트
+│
+├── showcase/skillaxe/          별도 환경의 읽기 전용 Reflex 대시보드
+│   ├── dashboard/              로컬 실행 기록 조회·화면·스킬 diff
+│   └── tests/                  기록 로딩·화면 데이터 테스트
 │
 ├── evaluator/                 기존 최종 채점 코드
 ├── data/                      고정 데이터와 SQLite DB
@@ -127,14 +132,14 @@ LLM_CONCURRENCY=8
 
 필요하면 `LLM_PROVIDER`로 서빙 provider를 지정한다. Improver 모델은 기존 `IMPROVER_LLM_*` 설정을 사용하며, 별도 설정이 없으면 기본 모델 설정을 따른다. SkillAxe 실행 시 환경변수와 `.env`의 `LLM_CACHE`는 제거하거나 비워 둔다.
 
-Trigger는 spaCy `en_core_web_sm` 3.8.0, Trigger·Coverage는 `sentence-transformers/all-MiniLM-L6-v2`를 공유한다. 임베딩 revision은 설정에 고정하며 최초 사용 시 모델 파일을 다운로드한다. 텍스트와 모델 설정에 따른 임베딩 캐시는 별도로 유지한다.
+한국어 실험의 Trigger는 spaCy `ko_core_news_sm` 3.8.0, Trigger·Coverage는 다국어 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`를 공유한다. 한국어 명사구는 의존 구문의 명사와 복합명사 수식어로 추출하며, 부정 표현의 지배 범위를 사용한다. 영문 파서는 기존 기록 재현용으로 유지한다. 임베딩 revision은 설정에 고정하며 최초 사용 시 모델 파일을 다운로드한다. 텍스트와 모델 설정에 따른 임베딩 캐시는 별도로 유지한다.
 
 ### 활성 스킬 준비 — 최초 한 번
 
-이미 생성된 L0를 활성 파일로 복사한다. L0 원본은 보존한다. 진행 중인 실험에서는 이 명령으로 활성 스킬을 덮어쓰지 않는다.
+현재 저장소에는 `active.json`이 이미 포함돼 있어 바로 실행할 수 있다. 활성 파일이 없는 새 실험 환경에서만 L0를 복사한다. 진행 중인 실험에서는 활성 스킬을 덮어쓰지 않는다.
 
 ```bash
-cp methods/skillaxe/skills/sqlite-text-to-sql-L0/L0.json \
+cp methods/skillaxe/skills/sqlite-text-to-sql-ko-L0/L0.json \
   methods/skillaxe/skills/active.json
 ```
 
@@ -149,7 +154,7 @@ RULER_OVERRIDE=1 uv run --frozen --extra skillaxe python -m loop.run \
 
 이 명령은 실제 LLM 호출, 후보 commit, 평가와 채택을 수행한다. 진단 작업 외에도 parent·screen·full 평가를 실행한다.
 
-이번 통합은 기존 실행 코드를 확장했으므로 ruler의 고정 파일 비교에 차이가 있다. 이를 명시하는 `RULER_OVERRIDE=1`이 필요하며 결과에 override가 기록된다. 최종 채점·kernel accept·champion 규칙은 유지한다.
+새 저장소에는 기존 `ruler-v14` 태그가 없어 현재 실행은 `ruler: skipped`로 기록된다. 위 환경변수만으로 `override`가 기록되는 것은 아니다. 기존 기준 태그가 있고 파일이 다를 때 `RULER_OVERRIDE=1`로 차이를 명시할 수 있다. 기준 태그를 새 구현에 맞춰 임의로 만들지 않았다. 최종 채점·kernel accept·champion 규칙은 유지한다.
 
 **`make round`는 기본 `config.yaml`을 사용하므로 위 SkillAxe 실행과 다르다. `make test`도 별도 SkillAxe archive와 활성 스킬에 연결되어 있지 않다.** 현재 연결 범위는 loop의 validation 평가까지다.
 
@@ -205,4 +210,95 @@ PYTHONDONTWRITEBYTECODE=1 uv run --frozen --extra skillaxe python \
 
 테스트는 모의 LLM, 고정 임베딩, 임시 SQLite를 사용해 진단 수식·실행 증거·후보 검증·기존 loop의 채택/거절 연결을 확인한다. 의존성 설치 후 테스트 자체에는 유료 LLM 호출이나 공식 test 데이터가 필요하지 않다.
 
-테스트 통과와 실제 성능 향상은 별개다. 네 축을 연결한 실제 LLM round의 성능 향상과 공식 test 결과는 아직 검증하지 않았다.
+테스트 통과와 실제 성능 향상은 별개다. 실제 validation 실행 결과는 아래와 같으며 공식 test는 실행하지 않았다.
+
+
+## 7. 실제 실행 결과 (2026-11-04)
+
+초기 영문 실험 기록은 보존한다. 현재 기본 실행 설정은 한국어 초기 스킬과 별도 `korean-archive.json`을 사용한다. 스킬 본문뿐 아니라 진단 설명·수정 이유도 한국어로 생성하며 SQL 식별자와 JSON 필드명은 유지한다.
+
+### 이전 영문 실험
+
+모델은 `openai/gpt-4.1-nano`, 진단 작업은 설정의 5개다. 두 실행 모두 `ruler: skipped`다.
+
+| Round | 기준 validation | 후보 validation | 결과 |
+|---|---:|---:|---|
+| 1 | 70/100 | 미실행 | Compliance·Coverage 응답 형식 오류로 Refiner 호출 전 중단 |
+| 2 | 66/100 | 69/100 | 네 진단·후보 생성·screen/full 완료, kernel accept 거절 |
+
+추가로 같은 조건의 No-skill validation 평가를 수행해 **71/100**을 얻었다. 현재 세 조건은 **No-skill 71 → 초기 L0 66 → 진화 L1 후보 69**이며, 후보가 No-skill보다 좋다는 결과는 아니다.
+
+Round 2의 screen은 13/20 → 15/20이었다. 전체 평가에서 6문제를 새로 맞히고 3문제를 잃어 순증은 3이다. SQL이 바뀐 작업이 63개여서 고정 kernel의 해당 구간 조건인 순증 4 이상에 미달했다. 활성 스킬은 L0로 복원됐고 후보는 기록과 로컬 Git ref에 남아 있다.
+
+Round 간 기준 점수도 70과 66으로 달랐다. 독립 모델 호출의 변동이 있으므로 70 → 69를 후보의 전후 성능으로 해석하지 않는다. 단일 실행으로 일반적인 성능 향상을 입증한 것은 아니다.
+
+첫 실행에서 실제 응답의 필수 JSON 필드 누락·타입 차이를 확인해 진단 프롬프트의 출력 계약을 명확히 했다. 실패를 정상 점수로 보정하거나 채점 규칙을 변경하지 않았다.
+
+### 한국어 재측정
+
+한국어 초기 스킬을 LLM으로 새로 생성하고, 한국어 진단·수정 지침으로 다시 실행했다. 기존 영문 기록을 번역해서 점수만 재사용한 것이 아니다.
+
+| 조건 | validation 결과 |
+|---|---:|
+| No-skill | **72/100** |
+| 한국어 초기 스킬 L0 | **69/100** |
+| 한국어 진화 후보 L1 | **70/100** |
+
+최종 비교 기록은 `logs/skillaxe/round-4-4f41ac34/`다. 세 조건 모두 같은 모델·설정·SQL agent 소스와 validation 100문제를 사용했으며 독립 실행 1회씩이다. 네 진단축 모두 계산을 완료했다. 후보는 초기 스킬보다 1문제 개선됐지만 고정 kernel의 채택 기준에 미달해 활성 스킬은 한국어 L0를 유지한다. No-skill보다 성능이 높다는 결과도 아니다.
+
+직전 한국어 round 3은 초기 스킬 69/100, No-skill 72/100을 기록했지만 JSON 문법·원문 인용 오류로 후보 생성 전에 중단됐다. 이 기록은 보존했다. 이후 공통 provider에 응답 스키마를 지정하고 규칙의 원문 줄 ID를 선택하게 해 형식 오류를 해결했다. 원문 줄은 프로그램이 그대로 연결하며 기존 rubric과 채점 기준은 유지한다.
+
+현재 한국어 설정에서는 다국어 임베딩과 한국어 의존 구문 분석기를 사용하므로 이전 영문 실험의 진단 거리 수치와 직접 비교하지 않는다. 한국어 문구 추출은 분석기의 품사·구문 분석 오류에 영향을 받을 수 있다.
+
+## 8. 대시보드
+
+대시보드는 `logs/skillaxe/round-*`의 실제 기록을 바로 읽는다. 내보내기 단계는 없다.
+
+```bash
+cd showcase/skillaxe
+uv sync --frozen
+uv run --frozen reflex run --env dev --backend-host 127.0.0.1
+```
+
+브라우저에서 **http://localhost:3000**을 연다. 최초 실행에는 프런트엔드 의존성 다운로드가 필요하다. 종료는 서버 터미널에서 `Ctrl+C`.
+
+첫 화면에서 세 조건을 비교한다.
+
+1. **No skill**: 스킬 없이 실행한 평가 결과
+2. **초기 생성 스킬**: LLM이 생성한 L0를 적용한 평가 결과
+3. **진화한 스킬**: 네 진단축으로 수정한 L1 후보의 평가 결과
+
+아래에서 작업을 선택하고 **Quality Impact / Trigger / Compliance / Coverage**의 실제 점수와 근거를 확인한다. 초기·진화 스킬 문서와 diff, 작업별 SQL 비교는 펼쳐서 볼 수 있다. 진단 결과는 L1을 만드는 데 사용한 L0 진단이며, L1을 재진단한 것으로 표시하지 않는다.
+
+화면은 읽기 전용이다. 모델 호출·재시도·채택 버튼이 없으며 실행 기록을 변경하지 않는다. 실패·미실행·N/A는 0점과 구분한다. 새 round가 생기면 새로고침 버튼으로 목록을 갱신한다.
+
+### No-skill 전체 평가 추가
+
+loop는 현재 스킬과 후보를 전체 평가한다. No-skill 전체 비교가 필요하면 같은 round 폴더에 아래처럼 별도로 저장한다. 진단 작업 5개의 No-skill trace와 validation 100문제의 평가는 서로 다르다.
+
+저장소 루트에서 `RUN_DIR`을 실제 round 폴더로 바꿔 실행한다. 이미 평가한 폴더는 덮어쓰지 않는다.
+
+```bash
+RUN_DIR=logs/skillaxe/round-4-4f41ac34
+mkdir "$RUN_DIR/external_evaluation/no_skill" && \
+uv run --frozen --extra skillaxe python -m sql_agent.run \
+  --problems data/validation.json \
+  --out "$RUN_DIR/external_evaluation/no_skill/predictions.jsonl" \
+  --trace-out "$RUN_DIR/external_evaluation/no_skill/traces.jsonl" \
+  --max-tokens 512 --sql-timeout 5 && \
+uv run --frozen --extra skillaxe python -m evaluator.evaluate \
+  --pred "$RUN_DIR/external_evaluation/no_skill/predictions.jsonl" \
+  --problems data/validation.json --db-dir data/database \
+  > "$RUN_DIR/external_evaluation/no_skill/evaluation.json"
+```
+
+실행한 round의 모델과 토큰·SQL 시간 제한을 동일하게 사용한다. 위 평가 CLI는 집계 점수만 저장하므로 작업별 정오 표시가 없을 수 있다. 현재 보관된 No-skill 실험은 작업별 채점도 저장했다. 공식 test는 이 경로에서 사용하지 않는다.
+
+대시보드 테스트는 저장소 루트에서 실행한다.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 uv run --frozen --extra skillaxe python \
+  -m unittest discover -s showcase/skillaxe/tests -v
+```
+
+[대시보드 상세 안내](showcase/skillaxe/README.md)

@@ -102,6 +102,15 @@ class Client:
         return complete(self._endpoint, messages, temperature=self.settings.temperature,
                         max_tokens=self.settings.max_tokens, retries=1 if self.independent else 6)
 
+    def complete_json(self, messages: list[dict[str,str]], schema: dict) -> str:
+        """Use the same provider with an explicit response schema; never repair scores."""
+        self._check_cache()
+        response=_request(self._endpoint,messages,{
+            'temperature':self.settings.temperature,'max_tokens':self.settings.max_tokens,
+            'response_format':{'type':'json_schema','json_schema':{
+                'name':'diagnostic','strict':True,'schema':schema}}},sdk_max_retries=0)
+        return response.choices[0].message.content or ''
+
 
 def _kind(url: str) -> str:
     if ".openai.azure.com" in url:

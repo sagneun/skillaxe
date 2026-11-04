@@ -31,4 +31,5 @@ skillaxe:
   chunk_chars: 1200
   agent_max_tokens: 512
   judge_max_tokens: 4096
+  judge_json_mode: true
   replicates: 1

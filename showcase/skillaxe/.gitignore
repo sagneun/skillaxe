@@ -1,0 +1,4 @@
+.web/
+.states/
+*.db
+assets/external/

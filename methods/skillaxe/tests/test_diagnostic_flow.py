@@ -42,7 +42,8 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(report['axes']['instruction_compliance']['evidence']['preserve_rule_ids'],['r1'])
         # 규칙 추출에는 작업을, 경로 생성에는 스킬 본문을 숨긴다.
         extraction=json.loads(judge.requests[1][-1]['content'])
-        self.assertEqual(set(extraction),{'skill'})
+        self.assertEqual(set(extraction),{'skill','source_lines'})
+        self.assertTrue(all(line in extraction['skill'] for line in extraction['source_lines'].values()))
         paths=json.loads(judge.requests[-1][-1]['content'])
         self.assertEqual(set(paths),{'question','schema','skill_type','path_count'})
 

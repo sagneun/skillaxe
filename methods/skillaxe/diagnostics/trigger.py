@@ -37,7 +37,7 @@ class TriggerParser:
             if token.dep_=='compound' and token.head.pos_ in ('NOUN','PROPN'):
                 continue
             start=token.i
-            while start>token.sent.start and doc[start-1].pos_ in ('NOUN','PROPN') and doc[start-1].dep_=='compound' and doc[start-1].head.i<=token.i:
+            while start>token.sent.start and doc[start-1].pos_ in ('NOUN','PROPN','X') and doc[start-1].dep_=='compound' and doc[start-1].head.i<=token.i:
                 start-=1
             yield doc[start:token.i+1]
 

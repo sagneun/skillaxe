@@ -71,3 +71,16 @@ class ProviderPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class StructuredResponseTests(unittest.TestCase):
+    def test_structured_call_passes_schema_to_shared_request(self):
+        from unittest.mock import patch,MagicMock
+        from llm.providers import Client
+        with patch.dict('os.environ',{'LLM_BASE_URL':'https://example.org/v1','LLM_MODEL':'model','LLM_API_KEY':'key','LLM_CACHE':'','LLM_BACKEND':'openai'}):
+            c=Client(role='improver',independent=True)
+            response=MagicMock();response.choices[0].message.content='{"rules":[]}'
+            schema={'type':'object','properties':{'rules':{'type':'array','items':{'type':'string'}}},'required':['rules'],'additionalProperties':False}
+            with patch('llm.providers._request',return_value=response) as request:
+                self.assertEqual(c.complete_json([{'role':'user','content':'JSON'}],schema),' {"rules":[]}'.strip())
+            self.assertEqual(request.call_args.args[2]['response_format']['json_schema']['schema'],schema)
+            self.assertEqual(request.call_args.kwargs['sdk_max_retries'],0)

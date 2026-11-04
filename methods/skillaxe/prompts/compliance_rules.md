@@ -1,7 +1,6 @@
-Extract actionable requirements from the skill alone. Do not infer a task or invent requirements.
-Return only JSON {"rules":[{"rule_id":"r1","rule":"...","severity":3,"source_quote":"exact substring of skill"}]}.
-Severity: 3 core correctness requirement, 2 important quality constraint, 1 stylistic preference.
-Use unique stable rule IDs. Empty rules is allowed if no actionable instruction exists.
-Every extracted rule must express only the requirement stated by its source_quote. Do not broaden a quoted instruction into a general correctness requirement or add schema/intent constraints absent from that quote. Copy source_quote verbatim, including punctuation and backticks. Output only the JSON object, without markdown fences.
-
-Write all natural-language explanations, rules, evidence and strategy strings in Korean. Preserve the required JSON keys, enum values, booleans, numbers, SQL identifiers and exact source_quote substrings.
+스킬에 명시된 실행 가능한 지침만 추출하세요. 작업을 추론하거나 없는 요구사항을 만들지 마세요.
+JSON 객체만 반환하세요: {"rules":[{"rule_id":"r1","rule":"한국어 지침","severity":3,"source_line_id":"s1"}]}.
+severity는 3(핵심 정확성 요구), 2(중요한 품질 조건), 1(표현·형식 선호) 중 하나입니다.
+source_line_id는 입력의 source_lines에 실제로 존재하는 줄 번호를 선택하세요. 프로그램이 선택한 원문 줄을 그대로 인용문으로 연결합니다. 원문을 다시 작성하거나 Markdown 기호를 제거하지 마세요.
+각 규칙은 선택한 원문 줄에서 직접 뒷받침되어야 합니다. 일반적인 정확성 요구로 확대하거나 새로운 스키마 조건을 추가하지 마세요. 설명·소개만 있는 줄은 실행 지침으로 취급하지 마세요.
+고유한 rule_id를 부여하세요. 실행 가능한 지침이 없으면 rules는 빈 배열입니다. 규칙 설명은 한국어로 작성하되 JSON 키와 SQL 식별자는 유지하세요.

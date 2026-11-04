@@ -135,6 +135,7 @@ class CallRecord:
     # 기존 provider는 응답 텍스트만 반환한다. 모르는 토큰 수를 0으로 만들지 않는다.
     usage: dict | None = None
     cache_hit: bool = False
+    response_schema: dict | None = None
 
 
 @dataclass(frozen=True)
