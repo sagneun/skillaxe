@@ -17,7 +17,19 @@ evolve_files: [methods/skillaxe/skills/active.json]
 log: logs/skillaxe/rounds.jsonl
 hook_changed: diagnose,build_prompt,propose,on_round_start - SkillAxe four-axis diagnosis and skill refinement
 skillaxe:
-  task_ids: [train_5749, train_4538, train_3880, train_6232, train_5387]
+  # 진단 후보군: validation 전체. on_round_start가 현재 오답 중 최대 5개를 선택한다.
+  task_ids: [
+    train_5749, train_4538, train_5743, train_3880, train_6232, train_3865, train_5683, train_5387, train_4532, train_4922,
+    train_5471, train_5383, train_6266, train_5478, train_0286, train_3620, train_6263, train_4069, train_4075, train_6253,
+    train_0991, train_3599, train_2371, train_6267, train_5491, train_3573, train_3556, train_1910, train_3553, train_4518,
+    train_3094, train_3593, train_0982, train_5452, train_0281, train_5352, train_6245, train_5357, train_4506, train_3857,
+    train_6265, train_3088, train_4904, train_3574, train_4901, train_5477, train_1923, train_3533, train_3595, train_0992,
+    train_6249, train_4942, train_4500, train_5505, train_4081, train_3625, train_4088, train_2348, train_5677, train_3606,
+    train_5368, train_2329, train_3562, train_5509, train_2345, train_3581, train_5361, train_3118, train_4084, train_4082,
+    train_4507, train_4509, train_6241, train_3594, train_3541, train_3557, train_3610, train_6252, train_4911, train_5364,
+    train_0284, train_3555, train_4510, train_6234, train_5745, train_6228, train_3120, train_4041, train_4526, train_3589,
+    train_3095, train_3531, train_2137, train_3571, train_2361, train_5760, train_5721, train_3886, train_3091, train_4071
+  ]
   output_dir: logs/skillaxe
   archive: logs/skillaxe/korean-archive.json
   embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2

@@ -8,7 +8,7 @@ import json
 from llm.providers import Client
 from sql_agent.schema import schema_text
 from sql_agent.run import run_with_skill
-from methods.skillaxe.contracts import TaskInput, ExecutionPolicy
+from methods.skillaxe.contracts import TaskInput, ExecutionPolicy, Trace
 from methods.skillaxe.skills import load_skill
 from methods.skillaxe.embeddings import SentenceEmbeddings
 from methods.skillaxe.diagnostics.trigger import TriggerParser, diagnose_trigger
@@ -44,7 +44,7 @@ def diagnose(ctx: RoundContext) -> str:
 
 
 def diagnose_round(ctx):
-    """문제 선택은 사전 ID만 사용. ctx.before/predictions/recent_log를 읽지 않는다."""
+    """현재 parent 오답을 선택하고, 채점 없이 실제 실패 trace로 진단한다."""
     options=ctx.config['skillaxe']
     if '_skillaxe_round_output' in ctx.config:
         root=Path(ctx.config['_skillaxe_round_output'])
@@ -52,13 +52,33 @@ def diagnose_round(ctx):
         root=Path(options.get('output_dir','logs/skillaxe'))/f'round-{ctx.round}-{uuid4().hex[:8]}'
         root.mkdir(parents=True,exist_ok=False)
     ctx.skillaxe_output=root
+    from hooks.on_round_start import select_skillaxe_failures
+    from methods.skillaxe.diagnostics.common import require_trace
+    selection=getattr(ctx,'skillaxe_selection',None)
+    if selection is None: selection=select_skillaxe_failures(ctx)
+    task_ids=selection['task_ids']
     skill=load_skill(Path(ctx.config['skill_path']))
-    state={'status':'running','round':ctx.round,'skill_hash':skill.content_hash,'task_ids':options['task_ids'],
+    state={'status':'running','round':ctx.round,'skill_hash':skill.content_hash,'task_ids':task_ids,'selection':selection,
            'config':options,'parent':ctx.parent,'mode':'live','implemented_metrics':
            ['quality_impact','trigger_precision','instruction_compliance','solution_path_coverage']}
     write_json(root/'manifest.json',state)
     reports=[]
+    if not task_ids:
+        state['status']='no_failures'
+        ctx.skillaxe_brief={'brief_id':str(uuid4()),'ready':False,'diagnoses':[],
+                           'instructions':['진단할 현재 parent 실패 사례가 없습니다.']}
+        write_json(root/'brief.json',ctx.skillaxe_brief)
+        write_json(root/'manifest.json',state,replace=True)
+        return json.dumps({'status':state['status'],'brief_id':ctx.skillaxe_brief['brief_id'],'output':str(root)})
     try:
+        # 다시 생성하면 실패 SQL이 사라질 수 있으므로 이번 parent 평가의 trace를 재사용한다.
+        parent_traces={}
+        for line in (root/'external_evaluation/parent/traces.jsonl').read_text().splitlines():
+            row=json.loads(line)
+            if row['task_id'] in task_ids:
+                if row['task_id'] in parent_traces: raise ValueError('duplicate parent trace')
+                parent_traces[row['task_id']]=Trace.from_record(row)
+        if set(parent_traces)!=set(task_ids): raise ValueError('missing parent failure trace')
         # 설정·모델 로딩에 실패하면 Refiner를 호출하지 않는다.
         embeddings=SentenceEmbeddings(options['embedding_model'],options['embedding_revision'],
                                       options.get('embedding_cache','logs/skillaxe/embedding-cache'))
@@ -71,16 +91,19 @@ def diagnose_round(ctx):
         write_json(root/'skills'/'current.json',{**asdict(skill),'content_hash':skill.content_hash})
         trigger=diagnose_trigger(skill,embeddings,parser,options.get('alpha',.5))
         write_json(root/'diagnostics'/'trigger.json',trigger)
-        for index,task_id in enumerate(options['task_ids']):
+        for index,task_id in enumerate(task_ids):
             raw=ctx.problem(task_id)
             task=TaskInput(task_id,raw['question'],raw['db_id'],schema_text(ctx.config['tables'],raw['db_id']))
             write_json(root/'inputs'/f'{index}.json',asdict(task))
             database=Path(ctx.config['db_dir'])/task.db_id/f'{task.db_id}.sqlite'
             policy=ExecutionPolicy(timeout_seconds=float(ctx.config.get('sql_timeout_sec',5)))
-            traces=[run_with_skill(task,s,database,agent,policy) for s in (None,skill)]
+            treated=parent_traces[task_id]
+            require_trace(task,skill,treated)
+            baseline=run_with_skill(task,None,database,agent,policy)
+            traces=[baseline,treated]
+            ctx.llm_calls+=len(baseline.agent_calls)
             for trace in traces:
                 write_json(root/'traces'/f'{trace.trace_id}.json',asdict(trace))
-                ctx.llm_calls+=len(trace.agent_calls)
             report=diagnose_all(task,skill,*traces,judge,embeddings,parser,seed=ctx.seed,config=options,trigger=trigger)
             reports.append(report)
             for name,d in report['axes'].items():

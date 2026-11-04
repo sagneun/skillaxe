@@ -2,7 +2,7 @@
 
 기존 SQL 에이전트에 스킬 문서를 적용하고, **네 진단축의 브리핑으로 다음 버전의 스킬을 만드는 프로젝트**다. 실행과 개선 반복은 기존 `sql_agent/run.py`와 `loop/run.py`를 사용한다.
 
-개선 대상은 스킬 문서다. SkillAxe 모드의 Refiner는 에이전트 코드나 loop를 수정하지 않는다. 진단은 정답 없이 수정 근거를 만들고, 생성된 후보의 최종 채택은 기존 evaluator·kernel·champion 규칙으로 결정한다.
+개선 대상은 스킬 문서다. SkillAxe 모드의 Refiner는 에이전트 코드나 loop를 수정하지 않는다. 진단 LLM은 정답 SQL 없이 수정 근거를 만들고, 생성된 후보의 최종 채택은 기존 evaluator·kernel·champion 규칙으로 결정한다.
 
 ## 1. 디렉터리 구조
 
@@ -20,7 +20,7 @@ skillaxe/
 │
 ├── hooks/
 │   ├── on_round_start.py       SkillAxe 모드의 개선 대상을 skill로 지정
-│   ├── diagnose.py             진단 작업 선택 → 실행 증거 수집 → 네 축 → 브리핑
+│   ├── diagnose.py             선택된 오답의 기존 실행 증거 → 네 축 → 브리핑
 │   ├── build_prompt.py         현재 스킬과 브리핑으로 Refiner 입력 구성
 │   ├── propose.py              수정 스킬 후보 생성, 호출 기록
 │   ├── review_patch.py         현재는 후보를 그대로 통과
@@ -109,7 +109,7 @@ loop/run.py
 
 진단 프롬프트는 `methods/skillaxe/prompts/`에 한국어로 작성되어 있다. 품질 영향은 요청한 출력과 실제 SQL·실행 증거를 비교하고, 지침 준수는 스킬 원문의 실행 가능한 규칙과 적용 조건을 추출해 규칙별로 판단한다. 해결 경로는 스키마에 근거한 전략과 적용 조건을 생성한다. 적용 조건(Trigger) 축은 파서·임베딩으로 계산하므로 별도 LLM 프롬프트가 없다. 프롬프트를 수정해도 기존 로그와 점수는 바뀌지 않으며, 새 진단 결과는 다음 실행에서 생성된다.
 
-진단과 Refiner 입력에는 정답 SQL·정오답 표시·최종 채택 이력을 전달하지 않는다. 다만 **최종 채택과 다음 parent 선택은 기존 정답 기반 평가 정책**을 사용한다.
+진단과 Refiner 입력에는 정답 SQL·정오답 표시·최종 채택 이력을 전달하지 않는다. 다만 **진단할 사례 선택에는 현재 parent의 validation 정오답을 사용**한다. 이는 정답 기반 오답 표본 선택이며, 완전히 정답과 무관한 방법은 아니다. 최종 채택과 다음 parent 선택은 기존 정답 기반 평가 정책을 사용한다.
 
 관련 규칙이나 비교할 문구가 없으면 이유와 함께 `N/A`로 기록한다. API·파싱·임베딩 실패는 `unavailable`이며, 한 축이라도 이 상태이면 Refiner 호출을 중단한다. 실패를 0점으로 대체하지 않는다.
 
@@ -172,7 +172,8 @@ RULER_OVERRIDE=1 uv run --frozen --extra skillaxe python -m loop.run \
 |---|---|
 | `target_kind` / `skill_path` | `skill` / 활성 스킬 JSON 경로 |
 | `editable_blocks` / `evolve_files` | 스킬과 활성 파일만 개선 대상으로 지정 |
-| `skillaxe.task_ids` | 미리 지정한 진단 작업 5개. 정오답으로 선택하지 않음 |
+| `skillaxe.task_ids` | 진단 후보군: validation 100개 전체. 실제 진단 대상은 매 round의 오답에서 선택 |
+| `on_round_start.skillaxe_diagnose_n` | 최대 진단 문제 수 5개. 오류 유형·DB별로 분산 선택하고 round seed로 재현 |
 | `skillaxe.replicates` | 작업별 실행 1회 |
 | `skillaxe.agent_max_tokens` / `sql_timeout_sec` | 512 토큰 / SQL 실행 5초. 진단과 최종 평가에 동일하게 전달 |
 | `skillaxe.path_count` / `chunk_chars` | Coverage 경로 3개 / 본문 청크 최대 1200자 |
@@ -291,6 +292,16 @@ SQL 에이전트와 Improver는 `openai/gpt-4.1-nano`로 유지하고 진단 모
 이후 사용자 요청으로 마지막 Improver 응답의 스킬 내용을 그대로 보존해 **validation 100문제 보완 평가**를 수행했다. 기존 `loop.run.eval_on`과 고정 채점·`kernel_accept`를 사용했으며 진단은 재실행하지 않았다. 후보는 70/100으로 초기 L0의 70/100과 같고, 1문제 개선·1문제 악화로 순증 0이었다(SQL 변경 23문제, kernel 판정 false). 스킬 미적용 72/100보다 낮다. `evaluation_followup.json`에 원본 응답 경로, 참조 검증 오류, 보완 평가 결과를 기록했다. 원래 round의 guard 거절 기록은 유지하고, 후보 문서·평가 결과만 추가했으며 자동 채택하지 않았다. 대시보드의 후보 점수는 이 보완 평가 결과다.
 
 round 7은 약 956초(16분)가 걸렸다. 진단 모델의 순차 호출 시간이 대부분을 차지했다. 기준 태그가 없어 `ruler: skipped`이며 공식 test는 실행하지 않았다. 진단 모델·provider 변경 외에 프롬프트, 토큰 한도, 채점·채택 규칙은 실행 중 변경하지 않았다.
+
+### 진단 사례 선택 수정
+
+round 7까지는 고정 5문제를 반복 진단했고, 그 5문제는 초기 스킬의 전체 평가에서 모두 정답이었다. 이 표본 선택 문제 때문에 기존 결과를 실패 사례 기반 개선 실험으로 해석할 수 없다.
+
+현재는 `hooks/on_round_start.py`가 이번 parent 평가의 validation 오답에서 최대 5개를 선택한다. 실행·생성 오류와 결과 불일치를 번갈아 다루고 DB도 분산한다. 정답 SQL 실행 실패(`gold failed`)는 에이전트 실패에서 제외한다. 선택 대상과 오류 분류는 manifest의 `selection`에 보존하며, 진단 LLM·Improver에는 이 채점 정보를 보내지 않는다. 실패가 없으면 정답 문제로 채우지 않고 진단·수정을 건너뛴다(진단 상태 `no_failures`; 기존 loop에서는 브리핑 미준비로 중단).
+
+`hooks/diagnose.py`는 선택된 문제의 `external_evaluation/parent/traces.jsonl`을 재사용한다. 스킬 적용 SQL을 다시 생성하지 않으므로 진단에서 원래 실패가 사라지지 않는다. No-skill 비교 실행만 추가하며, 문제·스킬·DB·실행 설정의 기존 일치 검증을 유지한다. 선택된 실패 trace가 없으면 재생성으로 덮어쓰지 않고 진단 실패로 기록한다. JSON 복원은 기존 `Trace` 계약에서 처리하며 별도 runner/client는 추가하지 않았다.
+
+round 7 저장 기록으로 선택 경로를 재검증했을 때, 기존 정답 5개 대신 실제 오답 30개 중 5개가 선택됐고 원래의 없는 컬럼·모호한 컬럼 오류와 실행 성공 후 결과 불일치 기록이 유지됐다. 이 검증은 기존 기록 재생이며, 수정 후 새 LLM 진단·성능 측정 결과는 아직 없다.
 
 ## 8. 대시보드
 

@@ -5,13 +5,14 @@
 3주차까지(prompt 블록만): prompt 지시문은 모든 질문에 영향을 줘서, 유형을 겨냥해도 바뀐 답이 많다 (실측 28~39개). 사실상 any가 남는다.
 4주차부터(config.yaml editable_blocks: [prompt, code]): exec_error를 겨냥한 route·fix patch는 실행 오류 문제만 바꿔 좁다. 이때 이 선택이 효과를 낸다."""
 from __future__ import annotations
-import json, math
+import json, math, random
+from collections import defaultdict, deque
 from pathlib import Path
 from loop.context import RoundContext
 
 ARMS = ["any", "exec_error", "mismatch"]   # 겨냥할 오답 유형. 선택지 하나 = "블록:유형" (예: "code:exec_error")
-KNOBS = {"self_select": ("bool", True)}
-KNOB_DOCS = {"self_select": "if true, each round picks which open block to patch and which wrong answers to target, from past round outcomes (UCB1 on accept rate); if false, blocks rotate and the fixed target_error_class value is used"}
+KNOBS = {"self_select": ("bool", True), "skillaxe_diagnose_n": ("int", 1, 100, 5)}
+KNOB_DOCS = {"skillaxe_diagnose_n": "Maximum current-parent validation failures to diagnose, stratified by error type and database; never fill with correct tasks", "self_select": "if true, each round picks which open block to patch and which wrong answers to target, from past round outcomes (UCB1 on accept rate); if false, blocks rotate and the fixed target_error_class value is used"}
 CHOICES = Path("logs/self_select.jsonl")   # round마다 고른 값. rounds.jsonl과 round 번호로 이어 보상(accept 여부)을 센다
 
 
@@ -46,9 +47,47 @@ def history(log: Path, choices: Path = CHOICES) -> list[tuple[str, float]]:
     return [(arm, 1.0 if rounds[n].get("accepted") else 0.0) for n, arm in last.items() if n in rounds]
 
 
+def select_skillaxe_failures(ctx):
+    """채점 결과는 표본 선택에만 사용한다. 이 기록은 LLM 브리핑에 넣지 않는다."""
+    limit=(ctx.improver or {}).get('skillaxe_diagnose_n', KNOBS['skillaxe_diagnose_n'][-1])
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError('skillaxe_diagnose_n must be an integer in [1,100]')
+    pool=set(ctx.config['skillaxe']['task_ids'])
+    groups=defaultdict(list)
+    for row in ctx.before['per_problem']:
+        if row['id'] not in pool or row['correct'] is not False:
+            continue
+        error=row.get('error') or ''
+        if error.startswith('gold failed:'):
+            continue  # 정답 쿼리 실행 실패는 에이전트 실패로 진단하지 않는다.
+        kind='result_mismatch' if error=='result mismatch' else 'execution_or_generation_error'
+        db=ctx.problems[row['id']]['db_id']
+        groups[(kind,db)].append(row['id'])
+    rng=random.Random(ctx.seed)
+    # 먼저 오류 유형을 번갈아 배치하고, 각 유형 안에서 DB를 분산한다.
+    kinds=defaultdict(list)
+    for key, ids in sorted(groups.items()):
+        rng.shuffle(ids)
+        kinds[key[0]].append((key,deque(ids)))
+    for queues in kinds.values(): rng.shuffle(queues)
+    ordered=[]
+    while any(kinds.values()):
+        for kind in sorted(kinds):
+            if kinds[kind]: ordered.append(kinds[kind].pop())
+    selected=[]
+    while len(selected)<limit and any(q for _,q in ordered):
+        for (kind,db),queue in ordered:
+            if queue and len(selected)<limit:
+                selected.append({'task_id':queue.popleft(),'error_type':kind,'db_id':db})
+    return {'policy':'current_parent_failures_by_error_and_database','parent':ctx.parent,
+            'seed':ctx.seed,'limit':limit,'eligible_failures':sum(len(v) for v in groups.values()),
+            'task_ids':[r['task_id'] for r in selected],'selected':selected}
+
+
 def on_round_start(ctx: RoundContext) -> None:
     if ctx.config.get("target_kind") == "skill":
         ctx.block_name = "skill"
+        ctx.skillaxe_selection = select_skillaxe_failures(ctx)
         return
     if not (ctx.improver or {}).get("self_select", KNOBS["self_select"][-1]):
         return None

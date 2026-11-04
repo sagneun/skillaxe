@@ -58,6 +58,15 @@ class GraphTests(unittest.TestCase):
                     value['changes']=[dict(diagnosis_ids=[payload['brief']['diagnoses'][0]['diagnosis_id']],rule_ids=[],reason='Clarify scope')]
                     return json.dumps(value)
                 def evaluation(problems,config,tag):
+                    if tag == 'parent':
+                        from sql_agent.run import run_with_skill
+                        from methods.skillaxe.contracts import TaskInput, ExecutionPolicy
+                        from methods.skillaxe.skills import load_skill
+                        task=TaskInput('q1','How many rows?','sample','table items: name text')
+                        trace=run_with_skill(task,load_skill(active),dbdir/'sample.sqlite',agent,ExecutionPolicy())
+                        folder=Path(config['_skillaxe_round_output'])/'external_evaluation/parent'
+                        folder.mkdir(parents=True)
+                        (folder/'traces.jsonl').write_text(json.dumps(asdict(trace))+'\n')
                     modified=json.loads(active.read_text())['version']!='L0'
                     correct=modified and accepted
                     return {'n':1,'correct':int(correct),'per_problem':[{'id':'q1','correct':correct,'error':None if correct else 'result mismatch'}]},None,{'q1':'new' if modified else 'old'}

@@ -189,3 +189,32 @@ class Trace:
     engine: str = "sql_agent.run.GRAPH"
     agent_source_hash: str | None = None
     graph_error_type: str | None = None
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> Trace:
+        """저장된 parent 실행을 복원한다. 허용한 필드만 사용한다."""
+        from dataclasses import fields
+
+        def allowed(kind, value):
+            return {f.name: value[f.name] for f in fields(kind) if f.name in value}
+
+        def call(value):
+            if value is None: return None
+            data=allowed(CallRecord,value)
+            data['settings']=ModelSettings(**allowed(ModelSettings,value['settings']))
+            return CallRecord(**data)
+
+        def execution(value):
+            if value is None: return None
+            data=allowed(ExecutionEvidence,value)
+            data['policy']=ExecutionPolicy(**allowed(ExecutionPolicy,value['policy']))
+            data['columns']=tuple(value['columns'])
+            data['rows']=tuple(tuple(row) for row in value['rows'])
+            return ExecutionEvidence(**data)
+
+        data=allowed(cls,record)
+        data.update(agent_call=call(record['agent_call']),execution=execution(record['execution']),
+                    agent_calls=tuple(call(c) for c in record.get('agent_calls',[])),
+                    execution_steps=tuple(SQLExecutionRecord(s['sql'],execution(s['evidence'])) for s in record.get('execution_steps',[])),
+                    node_order=tuple(record.get('node_order',[])))
+        return cls(**data)
